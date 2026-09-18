@@ -30,6 +30,6 @@ A corpus is a git repository. The runner is pointed at its URL and a commit. It 
 
 Converted into this layout by the benchmark, one work item per task. Any special install steps stay in the converter.
 
-## Fixtures
+## Toy corpus
 
-The benchmark repository carries two or three toy tasks in this layout as test fixtures and as the executable example of the protocol. They are never used for results.
+The benchmark repository carries a corpus of two or three toy tasks in this layout, under `tests/toy-corpus/`, as test data and as the executable example of the protocol. A toy task is solved by any harness that tries. It is never used for results.

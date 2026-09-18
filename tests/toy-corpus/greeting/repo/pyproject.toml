@@ -1,9 +1,7 @@
 [project]
-name = "agent-pipeline-benchmark"
+name = "greeting"
 version = "0.1.0"
-description = "Compares pipelines of coding agents, not models."
-readme = "README.md"
-license = "MIT"
+description = "Greets people."
 requires-python = ">=3.13"
 dependencies = []
 
@@ -16,4 +14,3 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = ["toy-corpus"]

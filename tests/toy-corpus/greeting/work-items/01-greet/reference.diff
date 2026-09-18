@@ -1,0 +1,7 @@
+diff --git a/src/greeting/__init__.py b/src/greeting/__init__.py
+index e69de29..1e21eeb 100644
+--- a/src/greeting/__init__.py
++++ b/src/greeting/__init__.py
+@@ -0,0 +1,2 @@
++def greet(name: str) -> str:
++    return f"Hello, {name}!"

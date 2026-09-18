@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
-FIXTURE_CORPUS = Path(__file__).parent.parent / "fixtures" / "corpus"
+TOY_CORPUS = Path(__file__).parent.parent / "toy-corpus"
 
 
 @pytest.fixture
-def corpus_of_fixture_tasks() -> Path:
-    return FIXTURE_CORPUS
+def toy_corpus() -> Path:
+    return TOY_CORPUS
 
 
 @pytest.fixture

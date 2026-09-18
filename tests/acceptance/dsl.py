@@ -46,7 +46,7 @@ def run_experiment(experiment: Experiment, results: Path) -> None:
         main(["run", str(experiment_file), "--results", str(results)])
 
 
-def the_run_record(results: Path, *, experiment: str, pipeline: str, task: str) -> dict:
+def run_record_of(results: Path, *, experiment: str, pipeline: str, task: str) -> dict:
     records = list((results / experiment / pipeline / task).glob("*/record.json"))
     assert len(records) == 1, f"expected exactly one run of {experiment}/{pipeline}/{task}, found {len(records)}"
     return json.loads(records[0].read_text())
