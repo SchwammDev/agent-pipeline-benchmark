@@ -1,0 +1,18 @@
+[project]
+name = "agent-pipeline-benchmark"
+version = "0.1.0"
+description = "Compares pipelines of coding agents, not models."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -10,4 +10,4 @@ Compares pipelines of coding agents, not models. A pipeline is how one work item
 | [docs/pipelines.md](docs/pipelines.md) | Pipeline and experiment definitions |
 | [docs/decisions.md](docs/decisions.md) | Decision log with reasons |
 
-Status: documentation only. No code yet.
+Status: project scaffold. `uv sync && ./run-tests.sh` runs the suite.
