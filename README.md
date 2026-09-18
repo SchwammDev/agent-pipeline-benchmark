@@ -1,6 +1,6 @@
-# Software engineering benchmark
+# agent-pipeline-benchmark
 
-Compares how coding agents are set up, not which model is best: hooks versus cleanup stages, weaker models for the first pass, Claude Code versus pi. The end goal is code an agent can keep changing cheaply.
+Compares pipelines of coding agents, not models. A pipeline is how one work item gets implemented: which harness, which model, which hooks, and whether a cleanup stage follows. The end goal is code an agent can keep changing cheaply.
 
 | Document | Content |
 |---|---|
