@@ -64,8 +64,8 @@ results/<experiment>/<pipeline>/<task>/<run-id>/
 | Group | Fields |
 |---|---|
 | Identity | experiment, pipeline, task, run number, corpus URL and commit, benchmark commit, image digest, harness versions, model ids, start, end |
-| Per work item | passed; fail-to-pass count; pass-to-pass count |
+| Per work item | solved; fail-to-pass count; pass-to-pass count |
 | Per stage | uncached input, cache read, cache write, output tokens; USD; wall-clock; turns; tool calls; hook events; end reason (finished, limit, error); static measures before and after |
-| Totals | passed work items, tokens, USD, wall-clock |
+| Totals | solved work items, tokens, USD, wall-clock |
 
 Analysis reads all records with one glob into one polars table.
