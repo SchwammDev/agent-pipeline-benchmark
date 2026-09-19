@@ -20,7 +20,7 @@ pending = pytest.mark.xfail(strict=True, reason="issue #3 in progress")
 
 @pending
 @pytest.mark.parametrize("harness", HARNESSES_THAT_TRY_TO_SOLVE_THE_WORK_ITEM)
-def test_an_experiment_using_a_toy_work_item_shows_that_every_harness_that_tries_solves_it(
+def test_an_experiment_with_only_a_toy_work_item_is_solvable_by_every_harness_that_tries_it(
     harness: str, toy_corpus: Path, results: Path
 ) -> None:
     pipeline = a_pipeline("bare", stages=[a_stage("implement", harness=harness)])
@@ -33,7 +33,7 @@ def test_an_experiment_using_a_toy_work_item_shows_that_every_harness_that_tries
 
 
 @pending
-def test_an_experiment_shows_that_even_a_toy_work_item_stays_unsolved_when_the_harness_does_nothing(
+def test_even_a_toy_work_item_stays_unsolved_when_a_harness_does_nothing(
     toy_corpus: Path, results: Path
 ) -> None:
     pipeline = a_pipeline("bare", stages=[a_stage("implement", harness="do-nothing")])
