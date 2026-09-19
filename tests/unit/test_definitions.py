@@ -113,6 +113,74 @@ def test_an_experiment_missing_a_required_key_is_reported_with_the_key_and_file(
     assert "broken.toml" in str(error.value)
 
 
+def test_an_unknown_stage_field_is_reported_with_the_file_the_stage_and_the_field(tmp_path: Path) -> None:
+    pipeline_file = tmp_path / "broken.toml"
+    pipeline_file.write_text(
+        '\n'.join(
+            [
+                'name = "bare-pi"',
+                '',
+                '[[stage]]',
+                'name = "implement"',
+                'harness = "pi"',
+                'modle = "x"',
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError) as error:
+        load_pipeline(pipeline_file)
+
+    assert_error_message_names(error.value, "broken.toml", "implement", "modle")
+
+
+def test_an_unknown_experiment_field_is_reported_with_the_file_and_the_field(tmp_path: Path) -> None:
+    experiment_file = tmp_path / "broken.toml"
+    experiment_file.write_text(
+        '\n'.join(
+            [
+                'name = "skeleton"',
+                'corpus = { path = "corpus" }',
+                'pipelines = []',
+                'tasks = ["greeting"]',
+                'repeats = 1',
+                'concurrency = 4',
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError) as error:
+        load_experiment(experiment_file)
+
+    assert_error_message_names(error.value, "broken.toml", "concurrency")
+
+
+def test_a_wrong_type_for_repeats_is_reported_with_the_file_and_the_field(tmp_path: Path) -> None:
+    experiment_file = tmp_path / "broken.toml"
+    experiment_file.write_text(
+        '\n'.join(
+            [
+                'name = "skeleton"',
+                'corpus = { path = "corpus" }',
+                'pipelines = []',
+                'tasks = ["greeting"]',
+                'repeats = "three"',
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError) as error:
+        load_experiment(experiment_file)
+
+    assert_error_message_names(error.value, "broken.toml", "repeats")
+
+
+def assert_error_message_names(error: ValueError, *fragments: str) -> None:
+    message = str(error)
+    for fragment in fragments:
+        assert fragment in message
+
+
 def assert_experiment_matches(
     experiment: ExperimentDefinition,
     *,

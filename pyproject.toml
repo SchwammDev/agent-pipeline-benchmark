@@ -5,7 +5,9 @@ description = "Compares pipelines of coding agents, not models."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pydantic>=2.13.5",
+]
 
 [dependency-groups]
 dev = ["pytest>=8"]

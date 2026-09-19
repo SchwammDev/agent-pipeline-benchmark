@@ -46,7 +46,7 @@ def assert_two_distinct_runs_numbered_one_and_two(written: list[Path]) -> None:
 def test_a_run_writes_its_record_under_experiment_pipeline_task_and_run_id(
     tmp_path: Path, toy_corpus: Path
 ) -> None:
-    pipeline = PipelineDefinition("bare", (StageDefinition("implement", "do-nothing"),))
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
     experiment = ExperimentDefinition(
         name="skeleton", corpus=toy_corpus, pipelines=(pipeline,), tasks=("greeting",), repeats=1
     )
@@ -60,7 +60,7 @@ def test_a_run_writes_its_record_under_experiment_pipeline_task_and_run_id(
 def test_repeats_write_two_runs_numbered_one_and_two_in_different_directories(
     tmp_path: Path, toy_corpus: Path
 ) -> None:
-    pipeline = PipelineDefinition("bare", (StageDefinition("implement", "do-nothing"),))
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
     experiment = ExperimentDefinition(
         name="skeleton", corpus=toy_corpus, pipelines=(pipeline,), tasks=("greeting",), repeats=2
     )
@@ -76,7 +76,8 @@ def test_the_stages_of_a_pipeline_are_applied_in_order_to_the_same_working_copy(
 ) -> None:
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(
-        "bare", (StageDefinition("first", "harness-a"), StageDefinition("second", "harness-b"))
+        name="bare",
+        stages=(StageDefinition(name="first", harness="harness-a"), StageDefinition(name="second", harness="harness-b")),
     )
     calls: list[tuple[str, str, Path]] = []
     resolve = resolver_of(
@@ -97,7 +98,8 @@ def test_the_stages_of_a_pipeline_are_applied_in_order_to_the_same_working_copy(
 def test_totals_sum_tokens_and_usd_over_all_stages_and_work_items(toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(
-        "bare", (StageDefinition("first", "harness-a"), StageDefinition("second", "harness-b"))
+        name="bare",
+        stages=(StageDefinition(name="first", harness="harness-a"), StageDefinition(name="second", harness="harness-b")),
     )
     resolve = resolver_of(
         {
@@ -115,7 +117,7 @@ def test_the_tasks_repository_is_untouched_by_a_run_with_the_reference_solution_
     toy_corpus: Path,
 ) -> None:
     task = load_task(toy_corpus, "greeting")
-    pipeline = PipelineDefinition("bare", (StageDefinition("implement", "reference-solution"),))
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
     before = snapshot_of(task.repository)
 
     run_pipeline_on_task("skeleton", pipeline, task, 1)
@@ -125,7 +127,7 @@ def test_the_tasks_repository_is_untouched_by_a_run_with_the_reference_solution_
 
 def test_the_record_marks_the_work_item_solved_after_the_reference_solution(toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
-    pipeline = PipelineDefinition("bare", (StageDefinition("implement", "reference-solution"),))
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
 
     record = run_pipeline_on_task("skeleton", pipeline, task, 1)
 
@@ -134,7 +136,7 @@ def test_the_record_marks_the_work_item_solved_after_the_reference_solution(toy_
 
 def test_the_record_marks_the_work_item_unsolved_after_doing_nothing(toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
-    pipeline = PipelineDefinition("bare", (StageDefinition("implement", "do-nothing"),))
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
 
     record = run_pipeline_on_task("skeleton", pipeline, task, 1)
 
@@ -143,7 +145,7 @@ def test_the_record_marks_the_work_item_unsolved_after_doing_nothing(toy_corpus:
 
 def test_the_records_json_has_the_shape_in_the_spec(toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
-    pipeline = PipelineDefinition("bare", (StageDefinition("implement", "reference-solution"),))
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
 
     record = run_pipeline_on_task("skeleton", pipeline, task, 1)
 
