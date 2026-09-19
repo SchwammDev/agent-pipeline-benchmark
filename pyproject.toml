@@ -9,6 +9,9 @@ dependencies = [
     "pydantic>=2.13.5",
 ]
 
+[project.scripts]
+apb = "agent_pipeline_benchmark.cli:main"
+
 [dependency-groups]
 dev = ["pytest>=8"]
 

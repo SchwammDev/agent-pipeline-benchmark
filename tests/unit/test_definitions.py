@@ -82,6 +82,39 @@ def test_a_relative_corpus_path_resolves_against_the_experiment_files_directory(
     assert experiment.corpus == tmp_path / "corpus"
 
 
+def test_a_stage_with_model_and_prompt_loads_with_those_values(tmp_path: Path) -> None:
+    pipeline_file = tmp_path / "full.toml"
+    pipeline_file.write_text(
+        '\n'.join(
+            [
+                'name = "full"',
+                '',
+                '[[stage]]',
+                'name = "implement"',
+                'harness = "reference-solution"',
+                'model = "claude-sonnet-5"',
+                'prompt = "implement.md"',
+            ]
+        )
+    )
+
+    pipeline = load_pipeline(pipeline_file)
+
+    stage = pipeline.stages[0]
+    assert stage.model == "claude-sonnet-5"
+    assert stage.prompt == "implement.md"
+
+
+def test_a_stage_without_model_or_prompt_loads_with_both_as_none(tmp_path: Path) -> None:
+    pipeline_file = a_pipeline_file(tmp_path, "bare", stages=[("implement", "reference-solution")])
+
+    pipeline = load_pipeline(pipeline_file)
+
+    stage = pipeline.stages[0]
+    assert stage.model is None
+    assert stage.prompt is None
+
+
 def test_a_pipeline_missing_a_required_key_is_reported_with_the_key_and_file(tmp_path: Path) -> None:
     pipeline_file = tmp_path / "broken.toml"
     pipeline_file.write_text('[[stage]]\nname = "implement"\nharness = "reference-solution"\n')

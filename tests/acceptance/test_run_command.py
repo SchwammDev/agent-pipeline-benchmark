@@ -16,7 +16,6 @@ from dsl import (
 )
 
 
-@pytest.mark.xfail(strict=True, reason="the apb entry point does not exist yet")
 def test_running_an_experiment_prints_each_finished_run_and_exits_cleanly(
     toy_corpus: Path, definitions: Path, results: Path
 ) -> None:
@@ -34,7 +33,6 @@ def test_running_an_experiment_prints_each_finished_run_and_exits_cleanly(
     assert_each_finished_run_path_was_printed(command, expected_runs=1)
 
 
-@pytest.mark.xfail(strict=True, reason="unknown fields are not rejected at the command boundary yet")
 def test_a_typo_in_a_stage_field_stops_the_run_before_anything_is_recorded(
     toy_corpus: Path, definitions: Path, results: Path
 ) -> None:
@@ -53,7 +51,6 @@ def test_a_typo_in_a_stage_field_stops_the_run_before_anything_is_recorded(
     assert_no_run_was_recorded(results)
 
 
-@pytest.mark.xfail(strict=True, reason="a missing experiment file is not reported as a clean failure yet")
 def test_a_missing_experiment_file_fails_the_command_without_touching_results(results: Path) -> None:
     command = run_apb("run", "experiments/no-such-experiment.toml", "--results", str(results))
 

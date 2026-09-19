@@ -25,5 +25,9 @@ def add_run_subcommand(subcommands: argparse._SubParsersAction) -> None:
 
 
 def run_command(arguments: argparse.Namespace) -> None:
-    experiment = load_experiment(arguments.experiment)
-    run_experiment(experiment, arguments.results)
+    try:
+        experiment = load_experiment(arguments.experiment)
+    except (ValueError, FileNotFoundError) as error:
+        raise SystemExit(error) from error
+    for record in run_experiment(experiment, arguments.results):
+        print(record)

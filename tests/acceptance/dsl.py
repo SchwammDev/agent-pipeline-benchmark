@@ -88,9 +88,13 @@ def an_experiment_file_created_for(experiment: Experiment, *, in_directory: Path
 
 def introduce_a_typo_in(file: Path, *, field: str) -> None:
     text = file.read_text()
-    corrupted = text.replace(field, field[:-1])
+    corrupted = text.replace(field, typo(field))
     assert corrupted != text, f"could not introduce a typo in {field!r}: {text}"
     file.write_text(corrupted)
+
+
+def typo(field: str) -> str:
+    return field.replace("e", "c", 1)
 
 
 def run_experiment(experiment: Experiment, results: Path) -> None:

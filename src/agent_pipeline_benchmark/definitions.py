@@ -10,6 +10,8 @@ class StageDefinition(BaseModel):
 
     name: str
     harness: str
+    model: str | None = None
+    prompt: str | None = None
 
 
 class CorpusDefinition(BaseModel):
