@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -9,6 +11,8 @@ from pathlib import Path
 class Stage:
     name: str
     harness: str
+    model: str | None = None
+    prompt: str | None = None
 
 
 @dataclass(frozen=True)
@@ -26,16 +30,67 @@ class Experiment:
     repeats: int
 
 
-def a_stage(name: str, *, harness: str) -> Stage:
-    return Stage(name, harness)
+def a_stage(name: str, *, harness: str, model: str | None = None, prompt: str | None = None) -> Stage:
+    return Stage(name, harness, model, prompt)
 
 
 def a_pipeline(name: str, *, stages: list[Stage]) -> Pipeline:
     return Pipeline(name, stages)
 
 
-def an_experiment(name: str, *, tasks: list[str], corpus: Path, pipelines: list[Pipeline], repeats: int) -> Experiment:
+def an_experiment(name: str, *, tasks: list[str], corpus: Path, pipelines: list[Pipeline | str], repeats: int) -> Experiment:
     return Experiment(name, corpus, pipelines, tasks, repeats)
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    exit_code: int
+    stdout: str
+    stderr: str
+
+
+def run_apb(*arguments: str) -> CommandResult:
+    apb = Path(sys.executable).parent / "apb"
+    completed = subprocess.run([str(apb), *arguments], capture_output=True, text=True)
+    return CommandResult(completed.returncode, completed.stdout, completed.stderr)
+
+
+def assert_the_command_exited_cleanly(command: CommandResult) -> None:
+    assert command.exit_code == 0, f"expected the command to exit 0, it exited {command.exit_code}\n{command.stderr}"
+
+
+def assert_the_command_failed(command: CommandResult) -> None:
+    assert command.exit_code != 0, "expected the command to fail, it exited 0"
+
+
+def assert_the_command_reported(command: CommandResult, *fragments: str) -> None:
+    for fragment in fragments:
+        assert fragment in command.stderr, f"expected {fragment!r} in the command output:\n{command.stderr}"
+
+
+def assert_each_finished_run_path_was_printed(command: CommandResult, *, expected_runs: int) -> None:
+    printed = [line for line in command.stdout.splitlines() if line.strip()]
+    assert len(printed) == expected_runs, f"expected {expected_runs} finished run paths, printed: {printed}"
+    for line in printed:
+        path = Path(line)
+        assert path.name == "record.json" and path.exists(), f"printed path is not an existing run record: {line}"
+
+
+def assert_no_run_was_recorded(results: Path) -> None:
+    records = list(results.rglob("record.json"))
+    assert not records, f"runs were recorded before the definitions were validated: {records}"
+
+
+def an_experiment_file_created_for(experiment: Experiment, *, in_directory: Path) -> Path:
+    in_directory.mkdir(parents=True, exist_ok=True)
+    return write_experiment(experiment, in_directory)
+
+
+def introduce_a_typo_in(file: Path, *, field: str) -> None:
+    text = file.read_text()
+    corrupted = text.replace(field, field[:-1])
+    assert corrupted != text, f"could not introduce a typo in {field!r}: {text}"
+    file.write_text(corrupted)
 
 
 def run_experiment(experiment: Experiment, results: Path) -> None:
@@ -74,14 +129,17 @@ def work_item_verdicts(record: dict) -> dict[str, bool]:
 
 
 def write_experiment(experiment: Experiment, directory: Path) -> Path:
-    pipeline_files = [write_pipeline(pipeline, directory) for pipeline in experiment.pipelines]
+    pipeline_references = [
+        pipeline if isinstance(pipeline, str) else str(write_pipeline(pipeline, directory))
+        for pipeline in experiment.pipelines
+    ]
     experiment_file = directory / f"{experiment.name}.toml"
     experiment_file.write_text(
         "\n".join(
             [
                 f'name = "{experiment.name}"',
                 f'corpus = {{ path = "{experiment.corpus}" }}',
-                f"pipelines = {toml_strings(str(file) for file in pipeline_files)}",
+                f"pipelines = {toml_strings(pipeline_references)}",
                 f"tasks = {toml_strings(experiment.tasks)}",
                 f"repeats = {experiment.repeats}",
             ]
@@ -92,9 +150,18 @@ def write_experiment(experiment: Experiment, directory: Path) -> Path:
 
 def write_pipeline(pipeline: Pipeline, directory: Path) -> Path:
     pipeline_file = directory / f"{pipeline.name}.toml"
-    stages = [f'[[stage]]\nname = "{stage.name}"\nharness = "{stage.harness}"' for stage in pipeline.stages]
+    stages = ["\n".join(stage_lines(stage)) for stage in pipeline.stages]
     pipeline_file.write_text("\n\n".join([f'name = "{pipeline.name}"', *stages]))
     return pipeline_file
+
+
+def stage_lines(stage: Stage) -> list[str]:
+    lines = ["[[stage]]", f'name = "{stage.name}"', f'harness = "{stage.harness}"']
+    if stage.model is not None:
+        lines.append(f'model = "{stage.model}"')
+    if stage.prompt is not None:
+        lines.append(f'prompt = "{stage.prompt}"')
+    return lines
 
 
 def toml_strings(values: Iterable[str]) -> str:

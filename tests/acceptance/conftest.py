@@ -13,3 +13,8 @@ def toy_corpus() -> Path:
 @pytest.fixture
 def results(tmp_path: Path) -> Path:
     return tmp_path / "results"
+
+
+@pytest.fixture
+def definitions(tmp_path: Path) -> Path:
+    return tmp_path / "definitions"
