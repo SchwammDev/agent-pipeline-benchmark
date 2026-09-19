@@ -15,10 +15,7 @@ from dsl import (
 HARNESSES_THAT_TRY_TO_SOLVE_THE_WORK_ITEM = ["reference-solution"]
 CONTROL_HARNESSES = ["reference-solution", "do-nothing"]
 
-pending = pytest.mark.xfail(strict=True, reason="issue #3 in progress")
 
-
-@pending
 @pytest.mark.parametrize("harness", HARNESSES_THAT_TRY_TO_SOLVE_THE_WORK_ITEM)
 def test_an_experiment_with_only_a_toy_work_item_is_solvable_by_every_harness_that_tries_it(
     harness: str, toy_corpus: Path, results: Path
@@ -32,7 +29,6 @@ def test_an_experiment_with_only_a_toy_work_item_is_solvable_by_every_harness_th
     assert_every_work_item_was_solved(record)
 
 
-@pending
 def test_even_a_toy_work_item_stays_unsolved_when_a_harness_does_nothing(
     toy_corpus: Path, results: Path
 ) -> None:
@@ -45,7 +41,6 @@ def test_even_a_toy_work_item_stays_unsolved_when_a_harness_does_nothing(
     assert_no_work_item_was_solved(record)
 
 
-@pending
 @pytest.mark.parametrize("control", CONTROL_HARNESSES)
 def test_a_control_harness_costs_nothing_when_running_experiments(
     control: str, toy_corpus: Path, results: Path

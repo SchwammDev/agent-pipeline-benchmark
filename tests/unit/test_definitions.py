@@ -1,0 +1,133 @@
+from pathlib import Path
+
+import pytest
+from helpers import a_pipeline_file, an_experiment_file
+
+from agent_pipeline_benchmark.definitions import ExperimentDefinition, load_experiment, load_pipeline
+
+
+def test_a_pipeline_file_yields_its_name_and_stages_in_order(tmp_path: Path) -> None:
+    pipeline_file = a_pipeline_file(
+        tmp_path,
+        "bare",
+        stages=[("implement", "reference-solution"), ("cleanup", "do-nothing")],
+    )
+
+    pipeline = load_pipeline(pipeline_file)
+
+    assert pipeline.name == "bare"
+    assert [(stage.name, stage.harness) for stage in pipeline.stages] == [
+        ("implement", "reference-solution"),
+        ("cleanup", "do-nothing"),
+    ]
+
+
+def test_an_experiment_file_yields_its_name_corpus_tasks_repeats_and_pipelines(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    pipeline_file = a_pipeline_file(tmp_path, "bare", stages=[("implement", "reference-solution")])
+    experiment_file = an_experiment_file(
+        tmp_path,
+        "skeleton",
+        corpus=corpus,
+        pipelines=[pipeline_file],
+        tasks=["greeting"],
+        repeats=3,
+    )
+
+    experiment = load_experiment(experiment_file)
+
+    assert_experiment_matches(
+        experiment,
+        name="skeleton",
+        corpus=corpus,
+        tasks=("greeting",),
+        repeats=3,
+        pipeline_names=["bare"],
+    )
+
+
+def test_a_relative_pipeline_path_resolves_against_the_experiment_files_directory(tmp_path: Path) -> None:
+    definitions_dir = tmp_path / "definitions"
+    definitions_dir.mkdir()
+    a_pipeline_file(definitions_dir, "bare", stages=[("implement", "reference-solution")])
+    experiment_file = an_experiment_file(
+        definitions_dir,
+        "skeleton",
+        corpus=tmp_path / "corpus",
+        pipelines=["bare.toml"],
+        tasks=["greeting"],
+        repeats=1,
+    )
+
+    experiment = load_experiment(experiment_file)
+
+    assert [pipeline.name for pipeline in experiment.pipelines] == ["bare"]
+
+
+def test_a_relative_corpus_path_resolves_against_the_experiment_files_directory(tmp_path: Path) -> None:
+    definitions_dir = tmp_path / "definitions"
+    definitions_dir.mkdir()
+    pipeline_file = a_pipeline_file(definitions_dir, "bare", stages=[("implement", "reference-solution")])
+    experiment_file = an_experiment_file(
+        definitions_dir,
+        "skeleton",
+        corpus="../corpus",
+        pipelines=[pipeline_file],
+        tasks=["greeting"],
+        repeats=1,
+    )
+
+    experiment = load_experiment(experiment_file)
+
+    assert experiment.corpus == tmp_path / "corpus"
+
+
+def test_a_pipeline_missing_a_required_key_is_reported_with_the_key_and_file(tmp_path: Path) -> None:
+    pipeline_file = tmp_path / "broken.toml"
+    pipeline_file.write_text('[[stage]]\nname = "implement"\nharness = "reference-solution"\n')
+
+    with pytest.raises(ValueError) as error:
+        load_pipeline(pipeline_file)
+
+    assert "name" in str(error.value)
+    assert "broken.toml" in str(error.value)
+
+
+def test_an_experiment_missing_a_required_key_is_reported_with_the_key_and_file(tmp_path: Path) -> None:
+    experiment_file = tmp_path / "broken.toml"
+    experiment_file.write_text(
+        '\n'.join(
+            [
+                'name = "skeleton"',
+                'corpus = { path = "corpus" }',
+                'pipelines = []',
+                'tasks = ["greeting"]',
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError) as error:
+        load_experiment(experiment_file)
+
+    assert "repeats" in str(error.value)
+    assert "broken.toml" in str(error.value)
+
+
+def assert_experiment_matches(
+    experiment: ExperimentDefinition,
+    *,
+    name: str,
+    corpus: Path,
+    tasks: tuple[str, ...],
+    repeats: int,
+    pipeline_names: list[str],
+) -> None:
+    actual = (
+        experiment.name,
+        experiment.corpus,
+        experiment.tasks,
+        experiment.repeats,
+        [pipeline.name for pipeline in experiment.pipelines],
+    )
+    expected = (name, corpus, tasks, repeats, pipeline_names)
+    assert actual == expected
