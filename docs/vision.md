@@ -23,12 +23,15 @@ Static measures such as complexity, lint findings, duplication and diff size are
 | Run | One pipeline applied to one task, all work items, repeated because agents are random |
 | Snapshot | The state of the working directory after a stage, kept as the stage's diff and rebuilt on demand |
 | Run record | Everything measured about one run, stored as data |
+| Progressed | A test that failed before a work item and passes after it |
+| Preserved | A test that passed before a work item and still passes after |
+| Regressed | A test that passed before a work item and fails after it |
 
 ## Measurement
 
 In order of trust. All scoring reads snapshots, never the live run.
 
-1. **Hidden tests, per work item.** A few tests fail before the work item and must pass after it, proving it was done. All others pass before and must still pass after, proving nothing broke. A work item is solved when both hold. Only solved work items get quality measured, or a tiny under-fix looks clean.
+1. **Hidden tests, per work item.** A few tests fail before the work item and must pass after it, proving it was done. All others pass before and must still pass after, proving nothing broke. A work item is solved when at least one test progressed and nothing regressed. Only solved work items get quality measured, or a tiny under-fix looks clean.
 2. **Cost, per stage and per work item.** Uncached input tokens, cache reads, cache writes, output tokens, dollars, wall-clock, turns. Both harnesses expose these per call.
 3. **Static measures, as candidate predictors.** Change before versus after, not repository averages. Suppressions such as `# noqa` count as findings. One fixed quality policy per language, independent of each repository's own lint configuration.
 4. **Test strength.** Mutation testing injects small bugs and checks whether the tests catch them. Slow, so it runs later over stored snapshots.
