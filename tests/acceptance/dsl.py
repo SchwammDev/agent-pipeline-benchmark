@@ -111,25 +111,58 @@ def run_record_of(results: Path, *, experiment: str, pipeline: str, task: str) -
     return json.loads(records[0].read_text())
 
 
-def assert_every_work_item_was_solved(record: dict) -> None:
-    verdicts = work_item_verdicts(record)
-    unsolved = [name for name, solved in verdicts.items() if not solved]
-    assert verdicts and not unsolved, f"unsolved work items: {unsolved or 'no work item recorded'}"
-
-
-def assert_no_work_item_was_solved(record: dict) -> None:
-    verdicts = work_item_verdicts(record)
-    solved = [name for name, solved in verdicts.items() if solved]
-    assert verdicts and not solved, f"solved work items: {solved or 'no work item recorded'}"
-
-
 def assert_the_run_cost_nothing(record: dict) -> None:
     totals = record["totals"]
     assert totals["tokens"] == 0 and totals["usd"] == 0, f"the run cost {totals}"
 
 
-def work_item_verdicts(record: dict) -> dict[str, bool]:
-    return {item["name"]: item["solved"] for item in record["work_items"]}
+def assert_the_work_item_was_solved(record: dict, *, work_item: str, progressed: int, preserved: int) -> None:
+    assert_the_work_item_was_scored(
+        record, work_item, solved=True, progressed=progressed, preserved=preserved
+    )
+
+
+def assert_the_work_item_was_not_solved(record: dict, *, work_item: str, progressed: int, preserved: int) -> None:
+    assert_the_work_item_was_scored(
+        record, work_item, solved=False, progressed=progressed, preserved=preserved
+    )
+
+
+def assert_the_work_item_was_scored(
+    record: dict, work_item: str, *, solved: bool, progressed: int, preserved: int
+) -> None:
+    verdict = the_verdict_on(record, work_item)
+    assert verdict["solved"] == solved, (
+        f"expected {work_item!r} to be scored solved={solved}, the record reports {verdict}"
+    )
+    assert verdict["progressed"] == progressed, (
+        f"expected {progressed} progressed tests for {work_item!r}, the record reports {verdict.get('progressed')}"
+    )
+    assert verdict["preserved"] == preserved, (
+        f"expected {preserved} preserved tests for {work_item!r}, the record reports {verdict.get('preserved')}"
+    )
+
+
+def the_verdict_on(record: dict, work_item: str) -> dict:
+    verdicts = {item["name"]: item for item in record["work_items"]}
+    assert work_item in verdicts, f"no verdict was recorded for work item {work_item!r}"
+    return verdicts[work_item]
+
+
+def working_copy_of(results: Path, *, experiment: str, pipeline: str, task: str) -> Path:
+    copies = list((results / experiment / pipeline / task).glob("*/working-copy"))
+    assert len(copies) == 1, (
+        f"expected exactly one kept working copy of {experiment}/{pipeline}/{task}, found {len(copies)}"
+    )
+    return copies[0]
+
+
+def assert_no_hidden_test_file_remains(working_copy: Path, *, corpus: Path, task: str) -> None:
+    for hidden_tests in sorted((corpus / task / "work-items").glob("*/tests")):
+        for hidden_test in hidden_tests.rglob("*"):
+            if hidden_test.is_file():
+                leftover = working_copy / "tests" / hidden_test.relative_to(hidden_tests)
+                assert not leftover.exists(), f"a hidden test file survived scoring: {leftover}"
 
 
 def write_experiment(experiment: Experiment, directory: Path) -> Path:

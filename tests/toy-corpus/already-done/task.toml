@@ -1,0 +1,3 @@
+name = "already-done"
+language = "python"
+notes = "The repository already implements the work item requirement, so its hidden tests pass before the work item."
