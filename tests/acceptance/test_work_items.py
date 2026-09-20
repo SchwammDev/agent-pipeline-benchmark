@@ -17,7 +17,6 @@ from dsl import (
 CONTROL_HARNESSES = ["reference-solution", "do-nothing"]
 
 
-@pytest.mark.xfail(strict=True)
 def test_a_solved_work_item_reports_its_progressed_and_preserved_tests(
     toy_corpus: Path, results: Path
 ) -> None:
@@ -30,7 +29,6 @@ def test_a_solved_work_item_reports_its_progressed_and_preserved_tests(
     assert_the_work_item_was_solved(record, work_item="01-greet", progressed=2, preserved=1)
 
 
-@pytest.mark.xfail(strict=True)
 def test_an_untouched_work_item_is_unsolved_and_reports_zero_progressed_tests(
     toy_corpus: Path, results: Path
 ) -> None:
@@ -43,7 +41,6 @@ def test_an_untouched_work_item_is_unsolved_and_reports_zero_progressed_tests(
     assert_the_work_item_was_not_solved(record, work_item="01-greet", progressed=0, preserved=1)
 
 
-@pytest.mark.xfail(strict=True)
 def test_a_work_item_whose_repository_already_satisfies_the_hidden_tests_stays_unsolved(
     toy_corpus: Path, results: Path
 ) -> None:
@@ -56,7 +53,6 @@ def test_a_work_item_whose_repository_already_satisfies_the_hidden_tests_stays_u
     assert_the_work_item_was_not_solved(record, work_item="01-greet", progressed=0, preserved=3)
 
 
-@pytest.mark.xfail(strict=True)
 def test_a_work_item_that_breaks_the_repositorys_own_tests_stays_unsolved(
     toy_corpus: Path, results: Path
 ) -> None:
@@ -69,7 +65,6 @@ def test_a_work_item_that_breaks_the_repositorys_own_tests_stays_unsolved(
     assert_the_work_item_was_not_solved(record, work_item="01-greet", progressed=2, preserved=0)
 
 
-@pytest.mark.xfail(strict=True)
 def test_the_kept_working_copy_is_free_of_hidden_tests_after_scoring(
     toy_corpus: Path, results: Path
 ) -> None:

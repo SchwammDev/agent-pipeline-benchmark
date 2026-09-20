@@ -159,8 +159,89 @@ def test_the_records_json_has_the_shape_in_the_spec(toy_corpus: Path) -> None:
             {
                 "name": "01-greet",
                 "solved": True,
+                "progressed": 2,
+                "preserved": 1,
                 "stages": [{"name": "implement", "harness": "reference-solution", "tokens": 0, "usd": 0.0}],
             }
         ],
         "totals": {"solved": 1, "tokens": 0, "usd": 0.0},
     }
+
+
+def test_reference_solution_reports_two_progressed_and_one_preserved_test(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
+
+    assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(2, 1, True)]
+
+
+def test_doing_nothing_reports_no_progress_but_preserves_the_package_test(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
+
+    assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(0, 1, False)]
+
+
+def test_an_already_done_task_preserves_all_tests_without_progressing(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "already-done")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
+
+    assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(0, 3, False)]
+
+
+def test_regression_progresses_hidden_tests_but_regresses_the_package_test(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(
+        name="bare", stages=(StageDefinition(name="implement", harness="reference-solution-then-regression"),)
+    )
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
+
+    assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(2, 0, False)]
+
+
+def test_the_kept_working_copy_has_the_reference_solution_and_no_hidden_tests(
+    tmp_path: Path, toy_corpus: Path
+) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
+    results = tmp_path / "results"
+
+    run_pipeline_on_task("skeleton", pipeline, task, 1, results=results)
+
+    working_copy = the_kept_working_copy(results)
+    assert 'return f"Hello, {name}!"' in (working_copy / "src/greeting/__init__.py").read_text()
+    assert_no_copied_hidden_test_remains(working_copy, toy_corpus, task="greeting")
+
+
+def test_the_kept_working_copy_is_the_final_state_after_regression(tmp_path: Path, toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(
+        name="bare", stages=(StageDefinition(name="implement", harness="reference-solution-then-regression"),)
+    )
+    results = tmp_path / "results"
+
+    run_pipeline_on_task("skeleton", pipeline, task, 1, results=results)
+
+    working_copy = the_kept_working_copy(results)
+    assert "def test_broken" in (working_copy / "tests/test_package.py").read_text()
+
+
+def the_kept_working_copy(results: Path) -> Path:
+    copies = list(results.glob("skeleton/bare/greeting/*/working-copy"))
+    assert len(copies) == 1, f"expected exactly one kept working copy, found {len(copies)}"
+    return copies[0]
+
+
+def assert_no_copied_hidden_test_remains(working_copy: Path, corpus: Path, *, task: str) -> None:
+    for hidden_tests in sorted((corpus / task / "work-items").glob("*/tests")):
+        for hidden_test in hidden_tests.rglob("*"):
+            if hidden_test.is_file():
+                leftover = working_copy / "tests" / hidden_test.relative_to(hidden_tests)
+                assert not leftover.exists(), f"a hidden test file survived scoring: {leftover}"

@@ -10,7 +10,7 @@ from pathlib import Path
 from agent_pipeline_benchmark.corpus import Task, WorkItem, load_task
 from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
 from agent_pipeline_benchmark.harnesses import Harness, harness_named
-from agent_pipeline_benchmark.hidden_tests import hidden_tests_pass
+from agent_pipeline_benchmark.hidden_tests import passing_test_ids, test_movements
 
 HarnessResolver = Callable[[str], Harness]
 
@@ -27,6 +27,8 @@ class StageRecord:
 class WorkItemRecord:
     name: str
     solved: bool
+    progressed: int
+    preserved: int
     stages: tuple[StageRecord, ...]
 
 
@@ -63,6 +65,8 @@ def work_item_as_json(item: WorkItemRecord) -> dict:
     return {
         "name": item.name,
         "solved": item.solved,
+        "progressed": item.progressed,
+        "preserved": item.preserved,
         "stages": [stage_as_json(stage) for stage in item.stages],
     }
 
@@ -80,7 +84,7 @@ def run_experiment(
             task = load_task(experiment.corpus, task_name)
             for run_number in range(1, experiment.repeats + 1):
                 record = run_pipeline_on_task(
-                    experiment.name, pipeline, task, run_number, harness_named=harness_named
+                    experiment.name, pipeline, task, run_number, harness_named=harness_named, results=results
                 )
                 written_records.append(write_record(record, results))
     return written_records
@@ -93,7 +97,9 @@ def run_pipeline_on_task(
     run_number: int,
     *,
     harness_named: HarnessResolver = harness_named,
+    results: Path | None = None,
 ) -> RunRecord:
+    run_id = new_run_id()
     with tempfile.TemporaryDirectory() as working_copy_root:
         working_copy = Path(working_copy_root)
         shutil.copytree(
@@ -105,11 +111,13 @@ def run_pipeline_on_task(
         work_items = tuple(
             run_work_item(pipeline, work_item, working_copy, harness_named) for work_item in task.work_items
         )
+        if results is not None:
+            keep_working_copy(results, experiment, pipeline.name, task, run_id, working_copy)
     return RunRecord(
         experiment=experiment,
         pipeline=pipeline.name,
         task=task.name,
-        run_id=new_run_id(),
+        run_id=run_id,
         run_number=run_number,
         work_items=work_items,
     )
@@ -118,9 +126,17 @@ def run_pipeline_on_task(
 def run_work_item(
     pipeline: PipelineDefinition, work_item: WorkItem, working_copy: Path, harness_named: HarnessResolver
 ) -> WorkItemRecord:
+    before = passing_test_ids(work_item, working_copy)
     stages = tuple(run_stage(stage, work_item, working_copy, harness_named) for stage in pipeline.stages)
-    solved = hidden_tests_pass(work_item, working_copy)
-    return WorkItemRecord(name=work_item.name, solved=solved, stages=stages)
+    after = passing_test_ids(work_item, working_copy)
+    movements = test_movements(before, after)
+    return WorkItemRecord(
+        name=work_item.name,
+        solved=movements.solved,
+        progressed=movements.progressed,
+        preserved=movements.preserved,
+        stages=stages,
+    )
 
 
 def run_stage(
@@ -128,6 +144,24 @@ def run_stage(
 ) -> StageRecord:
     cost = harness_named(stage.harness).implement(work_item, working_copy)
     return StageRecord(name=stage.name, harness=stage.harness, tokens=cost.tokens, usd=cost.usd)
+
+
+def keep_working_copy(
+    results: Path, experiment: str, pipeline: str, task: Task, run_id: str, working_copy: Path
+) -> None:
+    assert_no_hidden_tests_remain(task, working_copy)
+    destination = results / experiment / pipeline / task.name / run_id / "working-copy"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(working_copy, destination)
+
+
+def assert_no_hidden_tests_remain(task: Task, working_copy: Path) -> None:
+    for work_item in task.work_items:
+        for hidden_test in work_item.hidden_tests.rglob("*"):
+            if hidden_test.is_file():
+                leftover = working_copy / "tests" / hidden_test.relative_to(work_item.hidden_tests)
+                if leftover.exists():
+                    raise AssertionError(f"a hidden test file survived scoring: {leftover}")
 
 
 def new_run_id() -> str:

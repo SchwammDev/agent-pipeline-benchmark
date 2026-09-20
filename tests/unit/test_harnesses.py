@@ -9,6 +9,7 @@ from agent_pipeline_benchmark.harnesses import (
     DoNothing,
     ReferenceSolution,
     ReferenceSolutionDoesNotApply,
+    ReferenceSolutionThenRegression,
     harness_named,
 )
 
@@ -56,6 +57,38 @@ def test_harness_named_reference_solution_returns_a_reference_solution_harness()
 
 def test_harness_named_do_nothing_returns_a_do_nothing_harness() -> None:
     assert isinstance(harness_named("do-nothing"), DoNothing)
+
+
+def test_reference_solution_then_regression_leaves_the_reference_solution_in_the_working_copy(
+    working_copy: Path, greet_work_item: WorkItem
+) -> None:
+    ReferenceSolutionThenRegression().implement(greet_work_item, working_copy)
+
+    assert_file_contains(working_copy / "src" / "greeting" / "__init__.py", 'return f"Hello, {name}!"')
+
+
+def test_reference_solution_then_regression_replaces_the_repository_owned_test_file(
+    working_copy: Path, greet_work_item: WorkItem
+) -> None:
+    ReferenceSolutionThenRegression().implement(greet_work_item, working_copy)
+
+    test_file = working_copy / "tests" / "test_package.py"
+    assert "def test_package_is_importable()" not in test_file.read_text()
+    assert_file_contains(test_file, "def test_broken() -> None:\n    assert False")
+
+
+def test_reference_solution_then_regression_reports_zero_cost(
+    working_copy: Path, greet_work_item: WorkItem
+) -> None:
+    cost = ReferenceSolutionThenRegression().implement(greet_work_item, working_copy)
+
+    assert cost == ZERO_COST
+
+
+def test_harness_named_reference_solution_then_regression_returns_a_reference_solution_then_regression_harness() -> None:
+    assert isinstance(
+        harness_named("reference-solution-then-regression"), ReferenceSolutionThenRegression
+    )
 
 
 def test_harness_named_with_an_unknown_name_reports_the_known_names() -> None:

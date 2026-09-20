@@ -45,8 +45,21 @@ class DoNothing(Harness):
         return ZERO_COST
 
 
+class ReferenceSolutionThenRegression(Harness):
+    BROKEN_TEST = "def test_broken() -> None:\n    assert False\n"
+
+    def implement(self, work_item: WorkItem, working_copy: Path) -> StageCost:
+        ReferenceSolution().implement(work_item, working_copy)
+        for test_file in (working_copy / "tests").glob("test_*.py"):
+            test_file.write_text(self.BROKEN_TEST)
+        for test_file in (working_copy / "tests").glob("*_test.py"):
+            test_file.write_text(self.BROKEN_TEST)
+        return ZERO_COST
+
+
 KNOWN_HARNESSES: dict[str, type[Harness]] = {
     "reference-solution": ReferenceSolution,
+    "reference-solution-then-regression": ReferenceSolutionThenRegression,
     "do-nothing": DoNothing,
 }
 
