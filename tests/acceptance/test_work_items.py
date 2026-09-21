@@ -12,12 +12,13 @@ from dsl import (
     assert_the_liubai_run_left_every_file_a_scorer_needs_on_disk,
     assert_the_liubai_run_solved_the_greeting_work_item,
     assert_the_run_costs,
+    assert_the_stage_diff_is_exactly_the_reference_change,
+    assert_the_run_is_free_of_hidden_tests,
     assert_the_work_item_was_not_solved,
     assert_the_work_item_was_solved,
     run_experiment,
     run_record_of,
     the_run_directory_of,
-    the_stage_directory_of,
 )
 
 CONTROL_HARNESSES = ["reference-solution", "do-nothing"]
@@ -71,7 +72,7 @@ def test_a_work_item_that_breaks_the_repositorys_own_tests_stays_unsolved(
     assert_the_work_item_was_not_solved(record, work_item="01-greet", progressed=2, preserved=0)
 
 
-def test_the_stage_diff_of_the_reference_solution_is_exactly_the_corpus_reference_change(
+def test_the_recorded_stage_diff_is_exactly_the_reference_change(
     toy_corpus: Path, results: Path
 ) -> None:
     pipeline = a_pipeline("bare", stages=[a_stage("implement", harness="reference-solution")])
@@ -80,10 +81,18 @@ def test_the_stage_diff_of_the_reference_solution_is_exactly_the_corpus_referenc
     run_experiment(experiment, results)
 
     run_directory = the_run_directory_of(results, experiment="skeleton", pipeline="bare", task="greeting")
-    stage_directory = the_stage_directory_of(run_directory, work_item="01-greet", stage="01-implement")
-    reference = toy_corpus / "greeting" / "work-items" / "01-greet" / "reference.diff"
-    assert (stage_directory / "diff.patch").read_text() == reference.read_text()
-    assert not list(run_directory.rglob("working-copy")), "the working copy must not be kept"
+    assert_the_stage_diff_is_exactly_the_reference_change(
+        run_directory, corpus=toy_corpus, task="greeting", work_item="01-greet"
+    )
+
+
+def test_the_run_is_free_of_hidden_tests_after_scoring(toy_corpus: Path, results: Path) -> None:
+    pipeline = a_pipeline("bare", stages=[a_stage("implement", harness="reference-solution")])
+    experiment = an_experiment("skeleton", tasks=["greeting"], corpus=toy_corpus, pipelines=[pipeline], repeats=1)
+
+    run_experiment(experiment, results)
+
+    assert_the_run_is_free_of_hidden_tests(results, corpus=toy_corpus, experiment="skeleton", pipeline="bare", task="greeting")
 
 
 HARNESS_RUNS = [

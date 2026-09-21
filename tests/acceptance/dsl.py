@@ -381,6 +381,24 @@ def the_verdict_on(record: dict, work_item: str) -> dict:
     return verdicts[work_item]
 
 
+def assert_the_run_is_free_of_hidden_tests(
+    results: Path, *, corpus: Path, experiment: str, pipeline: str, task: str
+) -> None:
+    run_directory = the_run_directory_of(results, experiment=experiment, pipeline=pipeline, task=task)
+    leaked = [
+        (hidden_test.name, str(recorded.relative_to(run_directory)))
+        for hidden_test in the_hidden_tests_of(corpus, task)
+        for recorded in run_directory.rglob("*")
+        if recorded.is_file() and recorded.read_bytes() == hidden_test.read_bytes()
+    ]
+    assert not leaked, f"hidden tests reached the recorded run: {leaked}"
+
+
+def the_hidden_tests_of(corpus: Path, task: str) -> list[Path]:
+    work_items = sorted((corpus / task / "work-items").iterdir())
+    return [file for item in work_items for file in (item / "tests").rglob("*") if file.is_file()]
+
+
 def write_experiment(experiment: Experiment, directory: Path) -> Path:
     pipeline_references = [
         pipeline if isinstance(pipeline, str) else str(write_pipeline(pipeline, directory))
