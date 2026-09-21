@@ -81,10 +81,6 @@ def junit_test_verdicts(junit_xml: Path) -> list[TestVerdict]:
     ]
 
 
-def parse_passing_test_ids(junit_xml: Path) -> frozenset[str]:
-    return frozenset(verdict.name for verdict in junit_test_verdicts(junit_xml) if verdict.passed)
-
-
 def record_every_hidden_test(verdicts: list[TestVerdict], work_item: WorkItem) -> list[TestVerdict]:
     recorded = {verdict.name.rsplit("::", 1)[-1] for verdict in verdicts}
     missing = [
