@@ -2,7 +2,15 @@ from pathlib import Path
 
 
 def snapshot_of(directory: Path) -> dict[Path, str]:
-    return {path.relative_to(directory): path.read_text() for path in directory.rglob("*") if path.is_file()}
+    return {
+        path.relative_to(directory): path.read_text()
+        for path in directory.rglob("*")
+        if path.is_file() and not is_ignored_by_a_snapshot(path)
+    }
+
+
+def is_ignored_by_a_snapshot(path: Path) -> bool:
+    return any(part in (".venv", "__pycache__", ".git") for part in path.parts)
 
 
 def a_pipeline_file(directory: Path, name: str, *, stages: list[tuple[str, str]]) -> Path:

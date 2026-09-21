@@ -1,3 +1,4 @@
+import hashlib
 import re
 import shutil
 import subprocess
@@ -7,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agent_pipeline_benchmark.corpus import WorkItem
-from agent_pipeline_benchmark.subprocesses import environment_without_virtualenv
 
 
 @dataclass(frozen=True)
@@ -31,16 +31,38 @@ class TestVerdict:
     __test__ = False
 
 
+SCORING_CACHE: dict[bytes, list[TestVerdict]] = {}
+NOT_PART_OF_THE_WORKING_COPY = {".venv", ".git", "__pycache__", ".pytest_cache"}
+
+
 def score_hidden_tests(work_item: WorkItem, working_copy: Path) -> list[TestVerdict]:
     destination = working_copy / "tests"
     copied_files = copy_hidden_tests(work_item.hidden_tests, destination)
     try:
+        cache_key = the_content_of(working_copy)
+        if cache_key in SCORING_CACHE:
+            return list(SCORING_CACHE[cache_key])
         with tempfile.TemporaryDirectory() as tmp:
             junit_xml = Path(tmp) / "junit.xml"
             run_full_suite(junit_xml, working_copy)
-            return record_every_hidden_test(junit_test_verdicts(junit_xml), work_item)
+            verdicts = record_every_hidden_test(junit_test_verdicts(junit_xml), work_item)
+        SCORING_CACHE[cache_key] = verdicts
+        return list(verdicts)
     finally:
         remove_copied_files(copied_files)
+
+
+def the_content_of(directory: Path) -> bytes:
+    hasher = hashlib.sha256()
+    files = sorted(
+        path
+        for path in directory.rglob("*")
+        if path.is_file() and not any(part in NOT_PART_OF_THE_WORKING_COPY for part in path.parts)
+    )
+    for path in files:
+        hasher.update(path.relative_to(directory).as_posix().encode())
+        hasher.update(path.read_bytes())
+    return hasher.digest()
 
 
 def passing_test_ids(work_item: WorkItem, working_copy: Path) -> frozenset[str]:
@@ -60,9 +82,8 @@ test_movements.__test__ = False
 
 def run_full_suite(junit_xml: Path, working_copy: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["uv", "run", "pytest", "-q", "--continue-on-collection-errors", "--junitxml", str(junit_xml)],
+        [str(working_copy / ".venv" / "bin" / "python"), "-m", "pytest", "-q", "--continue-on-collection-errors", "--junitxml", str(junit_xml)],
         cwd=working_copy,
-        env=environment_without_virtualenv(),
         capture_output=True,
         check=False,
     )

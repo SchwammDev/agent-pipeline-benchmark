@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from agent_pipeline_benchmark.corpus import WorkItem
+from agent_pipeline_benchmark.snapshots import prepare_environment
 
 TOY_CORPUS = Path(__file__).parent.parent / "toy-corpus"
 GREETING_WORK_ITEM = TOY_CORPUS / "greeting" / "work-items" / "01-greet"
@@ -21,6 +22,7 @@ def toy_corpus() -> Path:
 def working_copy(tmp_path: Path) -> Path:
     destination = tmp_path / "working-copy"
     shutil.copytree(GREETING_REPO, destination, ignore=shutil.ignore_patterns(".venv", "__pycache__"))
+    prepare_environment(destination)
     return destination
 
 
@@ -40,6 +42,7 @@ def already_done_working_copy(tmp_path: Path) -> Path:
     shutil.copytree(
         ALREADY_DONE_REPO, destination, ignore=shutil.ignore_patterns(".venv", "__pycache__")
     )
+    prepare_environment(destination)
     return destination
 
 

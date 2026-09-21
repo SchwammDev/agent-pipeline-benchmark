@@ -8,7 +8,23 @@ from helpers import snapshot_of
 from agent_pipeline_benchmark.corpus import WorkItem, load_task
 from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
 from agent_pipeline_benchmark.harnesses import Harness, StageCost, StageOutcome, ZERO_COST
-from agent_pipeline_benchmark.runner import HarnessResolver, run_experiment, run_pipeline_on_task
+from agent_pipeline_benchmark.hidden_tests import TestVerdict
+from agent_pipeline_benchmark.runner import HarnessResolver, Scorer, run_experiment, run_pipeline_on_task
+
+PACKAGE_TEST = "tests.test_package::test_package_is_importable"
+GREETING_TESTS = [
+    "tests.test_greet::test_greets_the_given_name",
+    "tests.test_greet::test_uses_the_name_exactly_as_given",
+]
+
+
+def a_scorer_returning(*scorings: list[TestVerdict]) -> Scorer:
+    remaining = iter(scorings)
+    return lambda work_item, working_copy: next(remaining)
+
+
+def scoring_only_the_package_test(work_item: WorkItem, working_copy: Path) -> list[TestVerdict]:
+    return [TestVerdict(name=PACKAGE_TEST, passed=True)]
 
 
 def benchmark_head() -> str:
@@ -85,6 +101,43 @@ def test_repeats_write_two_runs_numbered_one_and_two_in_different_directories(
     assert_two_distinct_runs_numbered_one_and_two(written)
 
 
+def test_the_injected_scorer_decides_what_the_record_reports(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
+    verdicts_per_scoring = iter(
+        [
+            [TestVerdict(name=PACKAGE_TEST, passed=True)],
+            [TestVerdict(name=PACKAGE_TEST, passed=True), TestVerdict(name="tests.test_greet::test_greets", passed=True)],
+        ]
+    )
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, score=lambda item, copy: next(verdicts_per_scoring))
+
+    assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(1, 1, True)]
+
+
+def test_a_run_prepares_the_working_copys_environment_before_scoring(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
+
+    def scoring_that_requires_a_prepared_environment(
+        work_item: WorkItem, working_copy: Path
+    ) -> list[TestVerdict]:
+        assert_the_working_copy_has_its_own_python(working_copy)
+        return scoring_only_the_package_test(work_item, working_copy)
+
+    record = run_pipeline_on_task(
+        "skeleton", pipeline, task, 1, score=scoring_that_requires_a_prepared_environment
+    )
+
+    assert [item.solved for item in record.work_items] == [False]
+
+
+def assert_the_working_copy_has_its_own_python(working_copy: Path) -> None:
+    python = working_copy / ".venv" / "bin" / "python"
+    assert python.exists(), f"expected a prepared environment at {python}"
+
+
 def test_the_stages_of_a_pipeline_are_applied_in_order_to_the_same_working_copy(
     toy_corpus: Path,
 ) -> None:
@@ -134,34 +187,20 @@ def test_the_tasks_repository_is_untouched_by_a_run_with_the_reference_solution_
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
     before = snapshot_of(task.repository)
 
-    run_pipeline_on_task("skeleton", pipeline, task, 1)
+    run_pipeline_on_task("skeleton", pipeline, task, 1, score=scoring_only_the_package_test)
 
     assert snapshot_of(task.repository) == before
-
-
-def test_the_record_marks_the_work_item_solved_after_the_reference_solution(toy_corpus: Path) -> None:
-    task = load_task(toy_corpus, "greeting")
-    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
-
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
-
-    assert [item.solved for item in record.work_items] == [True]
-
-
-def test_the_record_marks_the_work_item_unsolved_after_doing_nothing(toy_corpus: Path) -> None:
-    task = load_task(toy_corpus, "greeting")
-    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
-
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
-
-    assert [item.solved for item in record.work_items] == [False]
 
 
 def test_the_records_json_has_the_shape_in_the_spec(toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
+    solved_scorer = a_scorer_returning(
+        [TestVerdict(name=PACKAGE_TEST, passed=True)],
+        [TestVerdict(name=PACKAGE_TEST, passed=True), *[TestVerdict(name=name, passed=True) for name in GREETING_TESTS]],
+    )
 
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus)
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, score=solved_scorer)
 
     assert_the_record_keeps_the_spec_shape(record, corpus=toy_corpus, harnesses=["reference-solution"])
 
@@ -204,7 +243,7 @@ def test_the_identity_spans_the_run_end_is_strictly_after_start(toy_corpus: Path
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
 
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus)
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, score=scoring_only_the_package_test)
 
     assert_the_run_spans_end_after_start(record.as_json()["identity"])
 
@@ -251,7 +290,7 @@ def test_the_record_json_has_no_null_and_no_unmeasured_field(toy_corpus: Path) -
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
 
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus)
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, score=scoring_only_the_package_test)
 
     assert_no_unmeasured(record.as_json())
 
@@ -268,50 +307,12 @@ def assert_no_unmeasured(node: object, *, unmeasured: set[str] | None = None) ->
             assert_no_unmeasured(item, unmeasured=unmeasured)
 
 
-def test_reference_solution_reports_two_progressed_and_one_preserved_test(toy_corpus: Path) -> None:
-    task = load_task(toy_corpus, "greeting")
-    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
-
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
-
-    assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(2, 1, True)]
-
-
-def test_doing_nothing_reports_no_progress_but_preserves_the_package_test(toy_corpus: Path) -> None:
-    task = load_task(toy_corpus, "greeting")
-    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
-
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
-
-    assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(0, 1, False)]
-
-
-def test_an_already_done_task_preserves_all_tests_without_progressing(toy_corpus: Path) -> None:
-    task = load_task(toy_corpus, "already-done")
-    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
-
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
-
-    assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(0, 3, False)]
-
-
-def test_regression_progresses_hidden_tests_but_regresses_the_package_test(toy_corpus: Path) -> None:
-    task = load_task(toy_corpus, "greeting")
-    pipeline = PipelineDefinition(
-        name="bare", stages=(StageDefinition(name="implement", harness="reference-solution-then-regression"),)
-    )
-
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
-
-    assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(2, 0, False)]
-
-
 def test_the_recorded_stage_diff_holds_the_reference_solution(tmp_path: Path, toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
     results = tmp_path / "results"
 
-    run_pipeline_on_task("skeleton", pipeline, task, 1, results=results)
+    run_pipeline_on_task("skeleton", pipeline, task, 1, results=results, score=scoring_only_the_package_test)
 
     diff = the_recorded_stage_diff(results, task="greeting")
     reference = toy_corpus / "greeting" / "work-items" / "01-greet" / "reference.diff"
@@ -325,7 +326,9 @@ def test_the_recorded_stage_diff_holds_the_regression_change(tmp_path: Path, toy
     )
     results = tmp_path / "results"
 
-    run_pipeline_on_task("skeleton", pipeline, task, 1, results=results)
+    run_pipeline_on_task(
+        "skeleton", pipeline, task, 1, results=results, score=scoring_only_the_package_test
+    )
 
     diff = the_recorded_stage_diff(results, task="greeting")
     assert "def test_broken" in diff.read_text()

@@ -14,9 +14,10 @@ from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineD
 from agent_pipeline_benchmark.harnesses import Harness, StageOutcome, harness_named
 from agent_pipeline_benchmark.hidden_tests import TestVerdict, score_hidden_tests, test_movements
 from agent_pipeline_benchmark.prompts import render_prompt
-from agent_pipeline_benchmark.snapshots import commit_snapshot, initialise_snapshot, the_staged_change
+from agent_pipeline_benchmark.snapshots import commit_snapshot, initialise_snapshot, prepare_environment, the_staged_change
 
 HarnessResolver = Callable[[str], Harness]
+Scorer = Callable[[WorkItem, Path], list[TestVerdict]]
 
 
 @dataclass(frozen=True)
@@ -98,7 +99,11 @@ def stage_as_json(stage: StageRecord) -> dict:
 
 
 def run_experiment(
-    experiment: ExperimentDefinition, results: Path, *, harness_named: HarnessResolver = harness_named
+    experiment: ExperimentDefinition,
+    results: Path,
+    *,
+    harness_named: HarnessResolver = harness_named,
+    score: Scorer = score_hidden_tests,
 ) -> list[Path]:
     written_records = []
     for pipeline in experiment.pipelines:
@@ -112,6 +117,7 @@ def run_experiment(
                     run_number,
                     corpus=experiment.corpus,
                     harness_named=harness_named,
+                    score=score,
                     results=results,
                 )
                 written_records.append(write_record(record, results))
@@ -136,6 +142,7 @@ def run_pipeline_on_task(
     *,
     corpus: Path | None = None,
     harness_named: HarnessResolver = harness_named,
+    score: Scorer = score_hidden_tests,
     results: Path | None = None,
 ) -> RunRecord:
     start = datetime.now(timezone.utc)
@@ -148,10 +155,11 @@ def run_pipeline_on_task(
             dirs_exist_ok=True,
             ignore=shutil.ignore_patterns(".venv", "__pycache__"),
         )
+        prepare_environment(working_copy)
         initialise_snapshot(working_copy)
         run_directory = the_run_directory(results, experiment, pipeline.name, task.name, run_id)
         work_items = tuple(
-            run_work_item(pipeline, work_item, working_copy, harness_named, run_directory)
+            run_work_item(pipeline, work_item, working_copy, harness_named, score, run_directory)
             for work_item in task.work_items
         )
     return RunRecord(
@@ -180,16 +188,15 @@ def run_work_item(
     work_item: WorkItem,
     working_copy: Path,
     harness_named: HarnessResolver,
+    score: Scorer,
     run_directory: Path | None,
 ) -> WorkItemRecord:
-    before = frozenset(
-        verdict.name for verdict in score_hidden_tests(work_item, working_copy) if verdict.passed
-    )
+    before = frozenset(verdict.name for verdict in score(work_item, working_copy) if verdict.passed)
     stages = tuple(
         run_stage(stage, work_item, working_copy, harness_named, the_stage_directory(run_directory, work_item, stage, number))
         for number, stage in enumerate(pipeline.stages, start=1)
     )
-    after_verdicts = score_hidden_tests(work_item, working_copy)
+    after_verdicts = score(work_item, working_copy)
     after = frozenset(verdict.name for verdict in after_verdicts if verdict.passed)
     movements = test_movements(before, after)
     scoring_directory = the_scoring_directory(run_directory, work_item)

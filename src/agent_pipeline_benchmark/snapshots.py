@@ -1,8 +1,20 @@
 import subprocess
 from pathlib import Path
 
+from agent_pipeline_benchmark.subprocesses import environment_without_virtualenv
+
 GIT_IDENTITY_NAME = "agent-pipeline-benchmark"
 GIT_IDENTITY_EMAIL = "benchmark@agent-pipeline-benchmark.invalid"
+
+
+def prepare_environment(working_copy: Path) -> None:
+    subprocess.run(
+        ["uv", "sync", "--frozen", "--compile-bytecode"],
+        cwd=working_copy,
+        env=environment_without_virtualenv(),
+        capture_output=True,
+        check=True,
+    )
 
 
 def initialise_snapshot(working_copy: Path) -> None:
