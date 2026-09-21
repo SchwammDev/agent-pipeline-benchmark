@@ -1,0 +1,5 @@
+name = "skeleton"
+corpus = { path = "../tests/toy-corpus" }
+pipelines = ["bare.toml"]
+tasks = ["greeting"]
+repeats = 1
