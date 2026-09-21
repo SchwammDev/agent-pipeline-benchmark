@@ -401,10 +401,7 @@ def the_hidden_tests_of(corpus: Path, task: str) -> list[Path]:
 
 
 def write_experiment(experiment: Experiment, directory: Path) -> Path:
-    pipeline_references = [
-        pipeline if isinstance(pipeline, str) else str(write_pipeline(pipeline, directory))
-        for pipeline in experiment.pipelines
-    ]
+    pipeline_references = [str(write_pipeline(pipeline, directory)) for pipeline in experiment.pipelines]
     experiment_file = directory / f"{experiment.name}.toml"
     experiment_file.write_text(
         "\n".join(
