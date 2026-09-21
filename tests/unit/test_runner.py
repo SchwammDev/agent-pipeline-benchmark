@@ -1,12 +1,24 @@
 import json
+import subprocess
+from datetime import datetime
 from pathlib import Path
 
 from helpers import snapshot_of
 
 from agent_pipeline_benchmark.corpus import WorkItem, load_task
 from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
-from agent_pipeline_benchmark.harnesses import Harness, StageCost, ZERO_COST
+from agent_pipeline_benchmark.harnesses import Harness, StageCost, StageOutcome, ZERO_COST
 from agent_pipeline_benchmark.runner import HarnessResolver, run_experiment, run_pipeline_on_task
+
+
+def benchmark_head() -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=Path(__file__).parents[2],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
 
 
 class RecordingHarness(Harness):
@@ -15,9 +27,11 @@ class RecordingHarness(Harness):
         self.cost = cost
         self.calls = calls
 
-    def implement(self, work_item: WorkItem, working_copy: Path) -> StageCost:
+    def implement(
+        self, work_item: WorkItem, working_copy: Path, prompt: str = "", model: str | None = None
+    ) -> StageOutcome:
         self.calls.append((self.name, work_item.name, working_copy))
-        return self.cost
+        return StageOutcome(cost=self.cost)
 
 
 def resolver_of(harnesses: dict[str, Harness]) -> HarnessResolver:
@@ -39,7 +53,7 @@ def assert_single_record_written_under(
 def assert_two_distinct_runs_numbered_one_and_two(written: list[Path]) -> None:
     assert len(written) == 2
     assert written[0].parent != written[1].parent
-    run_numbers = sorted(json.loads(path.read_text())["run_number"] for path in written)
+    run_numbers = sorted(json.loads(path.read_text())["identity"]["run_number"] for path in written)
     assert run_numbers == [1, 2]
 
 
@@ -147,25 +161,111 @@ def test_the_records_json_has_the_shape_in_the_spec(toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
 
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1)
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus)
 
-    assert record.as_json() == {
-        "experiment": "skeleton",
-        "pipeline": "bare",
-        "task": "greeting",
-        "run_id": record.run_id,
-        "run_number": 1,
-        "work_items": [
-            {
-                "name": "01-greet",
-                "solved": True,
-                "progressed": 2,
-                "preserved": 1,
-                "stages": [{"name": "implement", "harness": "reference-solution", "tokens": 0, "usd": 0.0}],
-            }
-        ],
-        "totals": {"solved": 1, "tokens": 0, "usd": 0.0},
-    }
+    assert_the_record_keeps_the_spec_shape(record, corpus=toy_corpus, harnesses=["reference-solution"])
+
+
+def assert_the_record_keeps_the_spec_shape(
+    record: object, *, corpus: Path, harnesses: list[str]
+) -> None:
+    js = record.as_json()
+    identity = js["identity"]
+    assert set(js) == {"identity", "work_items", "totals"}
+    assert_the_identity_group(identity, record, corpus=corpus, harnesses=harnesses)
+    assert js["work_items"] == [
+        {
+            "name": "01-greet",
+            "solved": True,
+            "progressed": 2,
+            "preserved": 1,
+            "stages": [{"name": "implement", "harness": "reference-solution", "tokens": 0, "usd": 0.0}],
+        }
+    ]
+    assert js["totals"] == {"solved": 1, "tokens": 0, "usd": 0.0}
+
+
+def assert_the_identity_group(
+    identity: dict, record: object, *, corpus: Path, harnesses: list[str]
+) -> None:
+    assert identity["experiment"] == "skeleton"
+    assert identity["pipeline"] == "bare"
+    assert identity["task"] == "greeting"
+    assert identity["run_id"] == record.run_id
+    assert identity["run_number"] == 1
+    assert identity["corpus"] == str(corpus)
+    assert identity["harnesses"] == harnesses
+    assert "models" not in identity
+    assert identity["benchmark_commit"] == benchmark_head()
+    assert isinstance(identity["start"], str) and isinstance(identity["end"], str)
+
+
+def test_the_identity_spans_the_run_end_is_strictly_after_start(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus)
+
+    assert_the_run_spans_end_after_start(record.as_json()["identity"])
+
+
+def assert_the_run_spans_end_after_start(identity: dict) -> None:
+    start = datetime.fromisoformat(identity["start"])
+    end = datetime.fromisoformat(identity["end"])
+    assert start.tzinfo is not None and end.tzinfo is not None
+    assert end > start
+
+
+def test_the_identity_lists_the_harnesses_and_models_of_the_stages(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(
+        name="bare",
+        stages=(
+            StageDefinition(name="first", harness="harness-a"),
+            StageDefinition(name="second", harness="harness-b", model="model-b"),
+        ),
+    )
+    resolve = resolver_of(
+        {
+            "harness-a": RecordingHarness("harness-a", ZERO_COST, []),
+            "harness-b": RecordingHarness("harness-b", ZERO_COST, []),
+        }
+    )
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolve)
+
+    assert record.as_json()["identity"]["harnesses"] == ["harness-a", "harness-b"]
+    assert record.as_json()["identity"]["models"] == ["model-b"]
+
+
+def test_the_identity_omits_models_when_no_stage_has_one(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus)
+
+    assert "models" not in record.as_json()["identity"]
+
+
+def test_the_record_json_has_no_null_and_no_unmeasured_field(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus)
+
+    assert_no_unmeasured(record.as_json())
+
+
+def assert_no_unmeasured(node: object, *, unmeasured: set[str] | None = None) -> None:
+    unmeasured = unmeasured or {"hook_events", "static_measures", "image_digest"}
+    if isinstance(node, dict):
+        for key, value in node.items():
+            assert key not in unmeasured, f"the unmeasured field {key!r} appeared in the record"
+            assert value is not None, f"the key {key!r} holds null"
+            assert_no_unmeasured(value, unmeasured=unmeasured)
+    elif isinstance(node, list):
+        for item in node:
+            assert_no_unmeasured(item, unmeasured=unmeasured)
 
 
 def test_reference_solution_reports_two_progressed_and_one_preserved_test(toy_corpus: Path) -> None:
@@ -206,21 +306,19 @@ def test_regression_progresses_hidden_tests_but_regresses_the_package_test(toy_c
     assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(2, 0, False)]
 
 
-def test_the_kept_working_copy_has_the_reference_solution_and_no_hidden_tests(
-    tmp_path: Path, toy_corpus: Path
-) -> None:
+def test_the_recorded_stage_diff_holds_the_reference_solution(tmp_path: Path, toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
     results = tmp_path / "results"
 
     run_pipeline_on_task("skeleton", pipeline, task, 1, results=results)
 
-    working_copy = the_kept_working_copy(results)
-    assert 'return f"Hello, {name}!"' in (working_copy / "src/greeting/__init__.py").read_text()
-    assert_no_copied_hidden_test_remains(working_copy, toy_corpus, task="greeting")
+    diff = the_recorded_stage_diff(results, task="greeting")
+    reference = toy_corpus / "greeting" / "work-items" / "01-greet" / "reference.diff"
+    assert diff.read_bytes() == reference.read_bytes()
 
 
-def test_the_kept_working_copy_is_the_final_state_after_regression(tmp_path: Path, toy_corpus: Path) -> None:
+def test_the_recorded_stage_diff_holds_the_regression_change(tmp_path: Path, toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(
         name="bare", stages=(StageDefinition(name="implement", harness="reference-solution-then-regression"),)
@@ -229,19 +327,11 @@ def test_the_kept_working_copy_is_the_final_state_after_regression(tmp_path: Pat
 
     run_pipeline_on_task("skeleton", pipeline, task, 1, results=results)
 
-    working_copy = the_kept_working_copy(results)
-    assert "def test_broken" in (working_copy / "tests/test_package.py").read_text()
+    diff = the_recorded_stage_diff(results, task="greeting")
+    assert "def test_broken" in diff.read_text()
 
 
-def the_kept_working_copy(results: Path) -> Path:
-    copies = list(results.glob("skeleton/bare/greeting/*/working-copy"))
-    assert len(copies) == 1, f"expected exactly one kept working copy, found {len(copies)}"
-    return copies[0]
-
-
-def assert_no_copied_hidden_test_remains(working_copy: Path, corpus: Path, *, task: str) -> None:
-    for hidden_tests in sorted((corpus / task / "work-items").glob("*/tests")):
-        for hidden_test in hidden_tests.rglob("*"):
-            if hidden_test.is_file():
-                leftover = working_copy / "tests" / hidden_test.relative_to(hidden_tests)
-                assert not leftover.exists(), f"a hidden test file survived scoring: {leftover}"
+def the_recorded_stage_diff(results: Path, *, task: str) -> Path:
+    stage_directories = list(results.glob(f"skeleton/bare/{task}/*/work-items/01-greet/stages/01-implement"))
+    assert len(stage_directories) == 1, f"expected exactly one recorded stage, found {len(stage_directories)}"
+    return stage_directories[0] / "diff.patch"

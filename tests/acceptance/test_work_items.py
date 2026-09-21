@@ -9,7 +9,6 @@ from dsl import (
     a_pipeline,
     a_stage,
     an_experiment,
-    assert_no_hidden_test_file_remains,
     assert_the_liubai_run_is_identified_in_its_record,
     assert_the_liubai_run_left_every_file_a_scorer_needs_on_disk,
     assert_the_liubai_run_solved_the_greeting_work_item,
@@ -18,7 +17,8 @@ from dsl import (
     assert_the_work_item_was_solved,
     run_experiment,
     run_record_of,
-    working_copy_of,
+    the_run_directory_of,
+    the_stage_directory_of,
 )
 
 CONTROL_HARNESSES = ["reference-solution", "do-nothing"]
@@ -72,7 +72,7 @@ def test_a_work_item_that_breaks_the_repositorys_own_tests_stays_unsolved(
     assert_the_work_item_was_not_solved(record, work_item="01-greet", progressed=2, preserved=0)
 
 
-def test_the_kept_working_copy_is_free_of_hidden_tests_after_scoring(
+def test_the_stage_diff_of_the_reference_solution_is_exactly_the_corpus_reference_change(
     toy_corpus: Path, results: Path
 ) -> None:
     pipeline = a_pipeline("bare", stages=[a_stage("implement", harness="reference-solution")])
@@ -80,8 +80,11 @@ def test_the_kept_working_copy_is_free_of_hidden_tests_after_scoring(
 
     run_experiment(experiment, results)
 
-    working_copy = working_copy_of(results, experiment="skeleton", pipeline="bare", task="greeting")
-    assert_no_hidden_test_file_remains(working_copy, corpus=toy_corpus, task="greeting")
+    run_directory = the_run_directory_of(results, experiment="skeleton", pipeline="bare", task="greeting")
+    stage_directory = the_stage_directory_of(run_directory, work_item="01-greet", stage="01-implement")
+    reference = toy_corpus / "greeting" / "work-items" / "01-greet" / "reference.diff"
+    assert (stage_directory / "diff.patch").read_text() == reference.read_text()
+    assert not list(run_directory.rglob("working-copy")), "the working copy must not be kept"
 
 
 HARNESS_RUNS = [
@@ -93,7 +96,7 @@ HARNESS_RUNS = [
         IMPLEMENT_PROMPT,
         TOKENS_ABOVE_ZERO,
         0.0,
-        marks=[pytest.mark.liubai, pytest.mark.xfail(strict=True, reason="liubai harness not implemented yet")],
+        marks=[pytest.mark.liubai],
         id="liubai",
     ),
 ]
@@ -122,7 +125,6 @@ def test_a_harness_run_reports_the_cost_of_its_stage(
 
 
 @pytest.mark.liubai
-@pytest.mark.xfail(strict=True, reason="liubai harness not implemented yet")
 def test_the_liubai_harness_solves_the_greeting_work_item(toy_corpus: Path, results: Path) -> None:
     stage = a_stage("implement", harness="liubai", model=LIUBAI_MODEL, prompt=IMPLEMENT_PROMPT)
     pipeline = a_pipeline("bare", stages=[stage])

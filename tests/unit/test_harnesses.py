@@ -31,15 +31,15 @@ def test_do_nothing_harness_leaves_the_working_copy_unchanged(working_copy: Path
 
 
 def test_reference_solution_harness_reports_zero_cost(working_copy: Path, greet_work_item: WorkItem) -> None:
-    cost = ReferenceSolution().implement(greet_work_item, working_copy)
+    outcome = ReferenceSolution().implement(greet_work_item, working_copy)
 
-    assert cost == ZERO_COST
+    assert outcome.cost == ZERO_COST
 
 
 def test_do_nothing_harness_reports_zero_cost(working_copy: Path, greet_work_item: WorkItem) -> None:
-    cost = DoNothing().implement(greet_work_item, working_copy)
+    outcome = DoNothing().implement(greet_work_item, working_copy)
 
-    assert cost == ZERO_COST
+    assert outcome.cost == ZERO_COST
 
 
 def test_a_reference_diff_that_does_not_apply_is_reported_with_the_work_item(
@@ -80,9 +80,9 @@ def test_reference_solution_then_regression_replaces_the_repository_owned_test_f
 def test_reference_solution_then_regression_reports_zero_cost(
     working_copy: Path, greet_work_item: WorkItem
 ) -> None:
-    cost = ReferenceSolutionThenRegression().implement(greet_work_item, working_copy)
+    outcome = ReferenceSolutionThenRegression().implement(greet_work_item, working_copy)
 
-    assert cost == ZERO_COST
+    assert outcome.cost == ZERO_COST
 
 
 def test_harness_named_reference_solution_then_regression_returns_a_reference_solution_then_regression_harness() -> None:

@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import tempfile
@@ -22,16 +23,28 @@ class TestMovements:
     __test__ = False
 
 
-def passing_test_ids(work_item: WorkItem, working_copy: Path) -> frozenset[str]:
+@dataclass(frozen=True)
+class TestVerdict:
+    name: str
+    passed: bool
+
+    __test__ = False
+
+
+def score_hidden_tests(work_item: WorkItem, working_copy: Path) -> list[TestVerdict]:
     destination = working_copy / "tests"
     copied_files = copy_hidden_tests(work_item.hidden_tests, destination)
     try:
         with tempfile.TemporaryDirectory() as tmp:
             junit_xml = Path(tmp) / "junit.xml"
             run_full_suite(junit_xml, working_copy)
-            return parse_passing_test_ids(junit_xml)
+            return record_every_hidden_test(junit_test_verdicts(junit_xml), work_item)
     finally:
         remove_copied_files(copied_files)
+
+
+def passing_test_ids(work_item: WorkItem, working_copy: Path) -> frozenset[str]:
+    return frozenset(verdict.name for verdict in score_hidden_tests(work_item, working_copy) if verdict.passed)
 
 
 def test_movements(before: frozenset[str], after: frozenset[str]) -> TestMovements:
@@ -55,14 +68,37 @@ def run_full_suite(junit_xml: Path, working_copy: Path) -> subprocess.CompletedP
     )
 
 
-def parse_passing_test_ids(junit_xml: Path) -> frozenset[str]:
+def junit_test_verdicts(junit_xml: Path) -> list[TestVerdict]:
     root = ET.parse(junit_xml).getroot()
-    passing_test_ids = set()
-    for testcase in root.iter("testcase"):
-        declaring_tags = [tag for tag in ("skipped", "failure", "error") if testcase.find(tag) is not None]
-        if not declaring_tags:
-            passing_test_ids.add(f"{testcase.attrib['classname']}::{testcase.attrib['name']}")
-    return frozenset(passing_test_ids)
+    return [
+        TestVerdict(
+            name=f"{testcase.attrib['classname']}::{testcase.attrib['name']}",
+            passed=not any(
+                testcase.find(tag) is not None for tag in ("skipped", "failure", "error")
+            ),
+        )
+        for testcase in root.iter("testcase")
+    ]
+
+
+def parse_passing_test_ids(junit_xml: Path) -> frozenset[str]:
+    return frozenset(verdict.name for verdict in junit_test_verdicts(junit_xml) if verdict.passed)
+
+
+def record_every_hidden_test(verdicts: list[TestVerdict], work_item: WorkItem) -> list[TestVerdict]:
+    recorded = {verdict.name.rsplit("::", 1)[-1] for verdict in verdicts}
+    missing = [
+        name for name in hidden_test_function_names(work_item.hidden_tests) if name not in recorded
+    ]
+    return [*verdicts, *[TestVerdict(name=name, passed=False) for name in missing]]
+
+
+def hidden_test_function_names(hidden_tests: Path) -> list[str]:
+    return [
+        match.group(1)
+        for test_file in hidden_tests.rglob("test_*.py")
+        for match in re.finditer(r"def (test_\w+)", test_file.read_text())
+    ]
 
 
 def copy_hidden_tests(hidden_tests: Path, destination: Path) -> list[Path]:
