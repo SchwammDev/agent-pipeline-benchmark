@@ -57,6 +57,7 @@ results/<experiment>/<pipeline>/<task>/<run-id>/
 - A finished run is immutable. Rescoring rewrites only `record.json` and `scoring/`.
 - No repository copy. Corpus commit plus stage diffs in order reproduce any snapshot; the inspector rebuilds on demand.
 - `<run-id>` includes the machine name and a random suffix so runs from different machines never collide.
+- Planned artifacts (`session/`, `static.json`) and record fields (image digest, harness versions, hook events, static measures) stay absent, not null, until their milestone produces them.
 - `results/` is mirrored to a remote with rclone. Records are small enough to version in git later if a paper needs a fixed dataset.
 
 ## record.json
