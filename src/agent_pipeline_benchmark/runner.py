@@ -4,14 +4,20 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 from agent_pipeline_benchmark.corpus import Task, WorkItem, load_task
 from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
-from agent_pipeline_benchmark.harnesses import Harness, StageOutcome, harness_named
+from agent_pipeline_benchmark.harnesses import (
+    Harness,
+    StageOutcome,
+    harness_named,
+    the_measures_of,
+)
 from agent_pipeline_benchmark.hidden_tests import TestVerdict, score_hidden_tests, test_movements
 from agent_pipeline_benchmark.prompts import render_prompt
 from agent_pipeline_benchmark.snapshots import commit_snapshot, initialise_snapshot, prepare_environment, the_staged_change
@@ -26,6 +32,10 @@ class StageRecord:
     harness: str
     tokens: int
     usd: float
+    duration_seconds: float
+    turns: int | None = None
+    tool_calls: int | None = None
+    end_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +60,7 @@ class RunRecord:
     harnesses: tuple[str, ...]
     models: tuple[str, ...]
     work_items: tuple[WorkItemRecord, ...]
+    harness_versions: dict[str, str] = field(default_factory=dict)
 
     def totals(self) -> dict:
         stages = [stage for item in self.work_items for stage in item.stages]
@@ -57,6 +68,7 @@ class RunRecord:
             "solved": sum(1 for item in self.work_items if item.solved),
             "tokens": sum(stage.tokens for stage in stages),
             "usd": sum(stage.usd for stage in stages),
+            "duration_seconds": sum(stage.duration_seconds for stage in stages),
         }
 
     def as_json(self) -> dict:
@@ -67,7 +79,7 @@ class RunRecord:
         }
 
     def identity(self) -> dict:
-        identity = {
+        identity: dict = {
             "experiment": self.experiment,
             "pipeline": self.pipeline,
             "task": self.task,
@@ -81,6 +93,8 @@ class RunRecord:
         }
         if self.models:
             identity["models"] = list(self.models)
+        if self.harness_versions:
+            identity["harness_versions"] = dict(self.harness_versions)
         return identity
 
 
@@ -95,7 +109,12 @@ def work_item_as_json(item: WorkItemRecord) -> dict:
 
 
 def stage_as_json(stage: StageRecord) -> dict:
-    return {"name": stage.name, "harness": stage.harness, "tokens": stage.tokens, "usd": stage.usd}
+    record = {"name": stage.name, "harness": stage.harness, "tokens": stage.tokens, "usd": stage.usd, "duration_seconds": stage.duration_seconds}
+    for field in ("turns", "tool_calls", "end_reason"):
+        value = getattr(stage, field)
+        if value is not None:
+            record[field] = value
+    return record
 
 
 def run_experiment(
@@ -162,6 +181,12 @@ def run_pipeline_on_task(
             run_work_item(pipeline, work_item, working_copy, harness_named, score, run_directory)
             for work_item in task.work_items
         )
+        harnesses = tuple(dict.fromkeys(stage.harness for stage in pipeline.stages))
+        harness_versions = {
+            name: version
+            for name in harnesses
+            if (version := harness_named(name).version()) is not None
+        }
     return RunRecord(
         experiment=experiment,
         pipeline=pipeline.name,
@@ -171,8 +196,9 @@ def run_pipeline_on_task(
         corpus=corpus,
         start=start,
         end=datetime.now(timezone.utc),
-        harnesses=tuple(dict.fromkeys(stage.harness for stage in pipeline.stages)),
+        harnesses=harnesses,
         models=tuple(dict.fromkeys(stage.model for stage in pipeline.stages if stage.model is not None)),
+        harness_versions=harness_versions,
         work_items=work_items,
     )
 
@@ -240,11 +266,24 @@ def run_stage(
     stage_directory: Path | None,
 ) -> StageRecord:
     prompt = render_prompt(stage.prompt, work_item) if stage.prompt is not None else ""
+    started = time.monotonic()
     outcome = harness_named(stage.harness).implement(work_item, working_copy, prompt, model=stage.model)
+    duration_seconds = time.monotonic() - started
+    measures = the_measures_of(outcome.events) if outcome.events else {}
+    record = StageRecord(
+        name=stage.name,
+        harness=stage.harness,
+        tokens=outcome.cost.tokens,
+        usd=outcome.cost.usd,
+        duration_seconds=duration_seconds,
+        turns=measures.get("turns"),
+        tool_calls=measures.get("tool_calls"),
+        end_reason=measures.get("end_reason"),
+    )
     if stage_directory is not None:
-        record_stage(stage, work_item, prompt, outcome, working_copy, stage_directory)
+        record_stage(stage, work_item, prompt, outcome, working_copy, stage_directory, record)
     commit_snapshot(working_copy, f"stage {stage.name}")
-    return StageRecord(name=stage.name, harness=stage.harness, tokens=outcome.cost.tokens, usd=outcome.cost.usd)
+    return record
 
 
 def record_stage(
@@ -254,6 +293,7 @@ def record_stage(
     outcome: StageOutcome,
     working_copy: Path,
     stage_directory: Path,
+    record: StageRecord,
 ) -> None:
     stage_directory.mkdir(parents=True)
     (stage_directory / "diff.patch").write_bytes(the_staged_change(working_copy))

@@ -10,6 +10,7 @@ from agent_pipeline_benchmark.harnesses import (
     LiubaiFailed,
     LiubaiMisconfigured,
     harness_named,
+    the_measures_of,
 )
 
 FAKE_STREAM = "\n".join(
@@ -35,6 +36,10 @@ def fake_liubai(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     executable = bin_dir / "liubai"
     executable.write_text(
         "#!/bin/sh\n"
+        'if [ "$1" = "--version" ]; then\n'
+        '    printf "0.4.1\n"\n'
+        '    exit 0\n'
+        'fi\n'
         'printf "%s\\n" "$@" > "$FAKE_LIUBAI_ARGS"\n'
         'pwd > "$FAKE_LIUBAI_CWD"\n'
         f"cat <<'EOF'\n{FAKE_STREAM}\nEOF\n"
@@ -55,6 +60,10 @@ def failing_liubai(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     executable.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     return tmp_path
+
+
+def test_the_liubai_harness_reports_the_version_liubai_prints(fake_liubai: Path) -> None:
+    assert Liubai().version() == "0.4.1"
 
 
 def test_the_liubai_harness_runs_liubai_in_the_working_copy_with_the_model_and_the_prompt(
@@ -121,3 +130,41 @@ def test_a_stage_without_a_prompt_is_reported(
 
 def test_harness_named_liubai_resolves_the_liubai_harness() -> None:
     assert isinstance(harness_named("liubai"), Liubai)
+
+
+def assert_measures_without_finish(measures: dict, turns: int, tool_calls: int) -> None:
+    assert measures == {"turns": turns, "tool_calls": tool_calls}
+    assert "end_reason" not in measures
+
+
+def test_the_measures_of_a_stream_count_the_turns_and_tool_calls_and_report_a_finished_end_reason() -> None:
+    measures = the_measures_of(
+        (
+            {"type": "turn_start"},
+            {"type": "message_update"},
+            {"type": "tool_execution_start"},
+            {"type": "turn_start"},
+            {"type": "agent_end"},
+        )
+    )
+
+    assert measures == {"turns": 2, "tool_calls": 1, "end_reason": "finished"}
+
+
+def test_the_measures_of_a_stream_without_a_normal_finish_omit_the_end_reason() -> None:
+    measures = the_measures_of(
+        (
+            {"type": "turn_start"},
+            {"type": "tool_execution_start"},
+            {"type": "turn_start"},
+        )
+    )
+
+    assert_measures_without_finish(measures, turns=2, tool_calls=1)
+
+
+def test_the_measures_of_an_empty_stream_report_zero_turns_and_tool_calls() -> None:
+    measures = the_measures_of(())
+
+    assert measures == {"turns": 0, "tool_calls": 0}
+    assert "end_reason" not in measures

@@ -50,6 +50,11 @@ class RecordingHarness(Harness):
         return StageOutcome(cost=self.cost)
 
 
+class VersionedHarness(RecordingHarness):
+    def version(self) -> str:
+        return "1.2.3"
+
+
 def resolver_of(harnesses: dict[str, Harness]) -> HarnessResolver:
     def resolve(name: str) -> Harness:
         return harnesses[name]
@@ -164,6 +169,17 @@ def test_the_stages_of_a_pipeline_are_applied_in_order_to_the_same_working_copy(
     assert len(working_copies_seen) == 1
 
 
+def assert_the_totals_are(
+    totals: dict, *, solved: int, tokens: int, usd: float, duration_seconds: float | None = None
+) -> None:
+    unchanged = {"solved": solved, "tokens": tokens, "usd": usd}
+    assert {key: totals[key] for key in unchanged} == unchanged
+    if duration_seconds is not None:
+        assert totals["duration_seconds"] == duration_seconds
+    else:
+        assert isinstance(totals["duration_seconds"], float) and totals["duration_seconds"] >= 0
+
+
 def test_totals_sum_tokens_and_usd_over_all_stages_and_work_items(toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(
@@ -179,7 +195,25 @@ def test_totals_sum_tokens_and_usd_over_all_stages_and_work_items(toy_corpus: Pa
 
     record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolve)
 
-    assert record.totals() == {"solved": 0, "tokens": 150, "usd": 0.75}
+    assert_the_totals_are(record.totals(), solved=0, tokens=150, usd=0.75)
+
+
+def test_the_totals_sum_the_wall_clock_of_all_stages(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(
+        name="bare",
+        stages=(StageDefinition(name="first", harness="harness-a"), StageDefinition(name="second", harness="harness-b")),
+    )
+    resolve = resolver_of(
+        {
+            "harness-a": RecordingHarness("harness-a", ZERO_COST, []),
+            "harness-b": RecordingHarness("harness-b", ZERO_COST, []),
+        }
+    )
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolve)
+
+    assert_the_totals_are(record.totals(), solved=0, tokens=0, usd=0.0)
 
 
 def test_the_tasks_repository_is_untouched_by_a_run_with_the_reference_solution_harness(
@@ -209,6 +243,20 @@ def test_the_records_json_has_the_shape_in_the_spec(toy_corpus: Path) -> None:
     assert_the_record_keeps_the_spec_shape(record, corpus=toy_corpus, harnesses=["reference-solution"])
 
 
+def assert_the_stage_and_totals_durations_are_measured(js: dict) -> None:
+    stage = js["work_items"][0]["stages"][0]
+    totals = js["totals"]
+    assert {key: stage[key] for key in ("name", "harness", "tokens", "usd")} == {
+        "name": "implement",
+        "harness": "reference-solution",
+        "tokens": 0,
+        "usd": 0.0,
+    }
+    assert {key: totals[key] for key in ("solved", "tokens", "usd")} == {"solved": 1, "tokens": 0, "usd": 0.0}
+    assert isinstance(stage["duration_seconds"], float) and stage["duration_seconds"] >= 0
+    assert isinstance(totals["duration_seconds"], float) and totals["duration_seconds"] >= 0
+
+
 def assert_the_record_keeps_the_spec_shape(
     record: RunRecord, *, corpus: Path, harnesses: list[str]
 ) -> None:
@@ -216,16 +264,11 @@ def assert_the_record_keeps_the_spec_shape(
     identity = js["identity"]
     assert set(js) == {"identity", "work_items", "totals"}
     assert_the_identity_group(identity, record, corpus=corpus, harnesses=harnesses)
-    assert js["work_items"] == [
-        {
-            "name": "01-greet",
-            "solved": True,
-            "progressed": 2,
-            "preserved": 1,
-            "stages": [{"name": "implement", "harness": "reference-solution", "tokens": 0, "usd": 0.0}],
-        }
-    ]
-    assert js["totals"] == {"solved": 1, "tokens": 0, "usd": 0.0}
+    assert_the_stage_and_totals_durations_are_measured(js)
+    assert [item["name"] for item in js["work_items"]] == ["01-greet"]
+    assert [item["solved"] for item in js["work_items"]] == [True]
+    assert [item["progressed"] for item in js["work_items"]] == [2]
+    assert [item["preserved"] for item in js["work_items"]] == [1]
 
 
 def assert_the_identity_group(
@@ -288,6 +331,33 @@ def test_the_identity_omits_models_when_no_stage_has_one(toy_corpus: Path) -> No
     record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus)
 
     assert "models" not in record.as_json()["identity"]
+
+
+def test_the_identity_carries_the_versions_of_its_harnesses(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(
+        name="bare",
+        stages=(StageDefinition(name="first", harness="harness-a"), StageDefinition(name="second", harness="harness-b")),
+    )
+    resolve = resolver_of(
+        {
+            "harness-a": VersionedHarness("harness-a", ZERO_COST, []),
+            "harness-b": RecordingHarness("harness-b", ZERO_COST, []),
+        }
+    )
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolve)
+
+    assert record.as_json()["identity"]["harness_versions"] == {"harness-a": "1.2.3"}
+
+
+def test_the_identity_omits_harness_versions_when_no_harness_reports_one(toy_corpus: Path) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
+
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus)
+
+    assert "harness_versions" not in record.as_json()["identity"]
 
 
 def test_the_record_json_has_no_null_and_no_unmeasured_field(toy_corpus: Path) -> None:

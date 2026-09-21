@@ -29,6 +29,9 @@ class ReferenceSolutionDoesNotApply(RuntimeError):
 
 
 class Harness(ABC):
+    def version(self) -> str | None:
+        return None
+
     @abstractmethod
     def implement(
         self, work_item: WorkItem, working_copy: Path, prompt: str = "", model: str | None = None
@@ -82,6 +85,15 @@ class LiubaiFailed(RuntimeError):
 
 
 class Liubai(Harness):
+    def version(self) -> str | None:
+        result = subprocess.run(
+            ["liubai", "--version"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+
     def implement(
         self, work_item: WorkItem, working_copy: Path, prompt: str = "", model: str | None = None
     ) -> StageOutcome:
@@ -133,6 +145,15 @@ def the_cost_of(events: tuple[dict, ...]) -> StageCost:
         if usage:
             tokens = sum(usage.get(field) or 0 for field in ("input", "output", "cacheRead", "cacheWrite"))
     return StageCost(tokens=tokens, usd=0.0)
+
+
+def the_measures_of(events: tuple[dict, ...]) -> dict:
+    turns = sum(event.get("type") == "turn_start" for event in events)
+    tool_calls = sum(event.get("type") == "tool_execution_start" for event in events)
+    measures: dict = {"turns": turns, "tool_calls": tool_calls}
+    if any(event.get("type") == "agent_end" for event in events):
+        measures["end_reason"] = "finished"
+    return measures
 
 
 KNOWN_HARNESSES: dict[str, type[Harness]] = {

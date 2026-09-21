@@ -10,10 +10,14 @@ from dsl import (
     an_experiment,
     assert_the_liubai_run_is_identified_in_its_record,
     assert_the_liubai_run_left_every_file_a_scorer_needs_on_disk,
+    assert_the_liubai_run_reports_the_measures_of_its_stage,
     assert_the_liubai_run_solved_the_greeting_work_item,
     assert_the_run_costs,
-    assert_the_stage_diff_is_exactly_the_reference_change,
     assert_the_run_is_free_of_hidden_tests,
+    assert_the_record_contains_the_measures_of_the_agents_run,
+    assert_the_record_names_the_version_the_harness_reports,
+    assert_the_run_totals_sum_the_stage_measures,
+    assert_the_stage_diff_is_exactly_the_reference_change,
     assert_the_work_item_was_not_solved,
     assert_the_work_item_was_solved,
     run_experiment,
@@ -132,6 +136,52 @@ def test_a_harness_run_reports_the_cost_of_its_stage(
     assert_the_run_costs(record, tokens=expected_tokens, usd=expected_usd)
 
 
+def test_the_record_contains_the_measures_of_the_agents_run(
+    fake_liubai: Path, toy_corpus: Path, results: Path
+) -> None:
+    stage = a_stage("implement", harness="liubai", model=LIUBAI_MODEL, prompt=IMPLEMENT_PROMPT)
+    pipeline = a_pipeline("bare", stages=[stage])
+    experiment = an_experiment("skeleton", tasks=["greeting"], corpus=toy_corpus, pipelines=[pipeline], repeats=1)
+
+    run_experiment(experiment, results)
+
+    record = run_record_of(results, experiment="skeleton", pipeline="bare", task="greeting")
+    assert_the_record_contains_the_measures_of_the_agents_run(
+        record, work_item="01-greet", stage="implement", turns=2, tool_calls=2, end_reason="finished"
+    )
+
+
+def test_the_run_totals_sum_the_measures_of_its_stages(
+    fake_liubai: Path, toy_corpus: Path, results: Path
+) -> None:
+    pipeline = a_pipeline(
+        "bare",
+        stages=[
+            a_stage("implement", harness="liubai", model=LIUBAI_MODEL, prompt=IMPLEMENT_PROMPT),
+            a_stage("review", harness="liubai", model=LIUBAI_MODEL, prompt=IMPLEMENT_PROMPT),
+        ],
+    )
+    experiment = an_experiment("skeleton", tasks=["greeting"], corpus=toy_corpus, pipelines=[pipeline], repeats=1)
+
+    run_experiment(experiment, results)
+
+    record = run_record_of(results, experiment="skeleton", pipeline="bare", task="greeting")
+    assert_the_run_totals_sum_the_stage_measures(record)
+
+
+def test_the_record_names_the_version_the_harness_reports(
+    fake_liubai: Path, toy_corpus: Path, results: Path
+) -> None:
+    stage = a_stage("implement", harness="liubai", model=LIUBAI_MODEL, prompt=IMPLEMENT_PROMPT)
+    pipeline = a_pipeline("bare", stages=[stage])
+    experiment = an_experiment("skeleton", tasks=["greeting"], corpus=toy_corpus, pipelines=[pipeline], repeats=1)
+
+    run_experiment(experiment, results)
+
+    record = run_record_of(results, experiment="skeleton", pipeline="bare", task="greeting")
+    assert_the_record_names_the_version_the_harness_reports(record, harness="liubai")
+
+
 @pytest.mark.liubai
 def test_the_liubai_harness_solves_the_greeting_work_item(toy_corpus: Path, results: Path) -> None:
     stage = a_stage("implement", harness="liubai", model=LIUBAI_MODEL, prompt=IMPLEMENT_PROMPT)
@@ -142,4 +192,5 @@ def test_the_liubai_harness_solves_the_greeting_work_item(toy_corpus: Path, resu
 
     assert_the_liubai_run_solved_the_greeting_work_item(results)
     assert_the_liubai_run_is_identified_in_its_record(results, corpus=toy_corpus)
+    assert_the_liubai_run_reports_the_measures_of_its_stage(results)
     assert_the_liubai_run_left_every_file_a_scorer_needs_on_disk(results, corpus=toy_corpus)

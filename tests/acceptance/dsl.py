@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 import sys
@@ -347,6 +348,74 @@ def assert_the_run_costs(record: dict, *, tokens: int | str, usd: float) -> None
     else:
         assert totals["tokens"] == tokens, f"the run cost {totals['tokens']} tokens, expected {tokens}"
     assert totals["usd"] == usd, f"the run cost {totals['usd']} USD, expected {usd}"
+
+
+def the_stage_measures_in(record: dict, *, work_item: str, stage: str) -> dict:
+    item = the_verdict_on(record, work_item)
+    stages = {stage_record["name"]: stage_record for stage_record in item["stages"]}
+    assert stage in stages, f"no stage {stage!r} was recorded for work item {work_item!r}: {stages}"
+    return stages[stage]
+
+
+def the_stage_name_of(stage_directory_name: str) -> str:
+    return stage_directory_name.split("-", 1)[1]
+
+
+def assert_the_record_contains_the_measures_of_the_agents_run(
+    record: dict, *, work_item: str, stage: str, turns: int, tool_calls: int, end_reason: str
+) -> None:
+    measures = the_stage_measures_in(record, work_item=work_item, stage=stage)
+    assert measures["turns"] == turns, f"the stage recorded {measures.get('turns')} turns, expected {turns}: {measures}"
+    assert measures["tool_calls"] == tool_calls, (
+        f"the stage recorded {measures.get('tool_calls')} tool calls, expected {tool_calls}: {measures}"
+    )
+    assert measures["end_reason"] == end_reason, (
+        f"the stage ended with {measures.get('end_reason')!r}, expected {end_reason!r}: {measures}"
+    )
+    assert measures["duration_seconds"] > 0, f"the stage recorded no wall-clock duration: {measures}"
+
+
+def assert_the_recorded_measures_match_the_event_stream(run_directory: Path, *, work_item: str, stage: str) -> None:
+    events = the_stage_events(run_directory, work_item=work_item, stage=stage)
+    measures = the_stage_measures_in(
+        the_run_record_in(run_directory), work_item=work_item, stage=the_stage_name_of(stage)
+    )
+    turns = sum(1 for event in events if event.get("type") == "turn_start")
+    tool_calls = sum(1 for event in events if event.get("type") == "tool_execution_start")
+    assert measures.get("turns") == turns, f"the stage recorded {measures.get('turns')} turns, the event stream shows {turns}: {measures}"
+    assert measures.get("tool_calls") == tool_calls, (
+        f"the stage recorded {measures.get('tool_calls')} tool calls, the event stream shows {tool_calls}: {measures}"
+    )
+    assert measures.get("end_reason") == "finished", (
+        f"the agent finished normally in the event stream, the stage ended with {measures.get('end_reason')!r}: {measures}"
+    )
+    assert measures.get("duration_seconds", 0) > 0, f"the stage recorded no wall-clock duration: {measures}"
+
+
+def assert_the_run_totals_sum_the_stage_measures(record: dict) -> None:
+    stages = [stage for item in record["work_items"] for stage in item["stages"]]
+    wall_clock = sum(stage.get("duration_seconds", 0.0) for stage in stages)
+    totals = record["totals"]
+    assert "duration_seconds" in totals, f"the totals do not carry the run's wall-clock duration: {totals}"
+    assert abs(totals["duration_seconds"] - wall_clock) < 1e-6, (
+        f"the totals wall-clock {totals['duration_seconds']} does not sum the stage durations {wall_clock}"
+    )
+
+
+def assert_the_record_names_the_version_the_harness_reports(record: dict, *, harness: str) -> None:
+    reported = subprocess.run([harness, "--version"], capture_output=True, text=True, check=True).stdout.strip()
+    versions = record["identity"].get("harness_versions", {})
+    assert versions.get(harness) == reported, (
+        f"the record does not name the version the {harness!r} harness reports ({reported!r}): {versions}"
+    )
+
+
+def assert_the_liubai_run_reports_the_measures_of_its_stage(results: Path) -> None:
+    run_directory = the_run_directory_of(results, experiment="skeleton", pipeline="bare", task="greeting")
+    assert_the_recorded_measures_match_the_event_stream(run_directory, work_item="01-greet", stage="01-implement")
+    record = the_run_record_in(run_directory)
+    assert_the_run_totals_sum_the_stage_measures(record)
+    assert_the_record_names_the_version_the_harness_reports(record, harness="liubai")
 
 
 def assert_the_work_item_was_solved(record: dict, *, work_item: str, progressed: int, preserved: int) -> None:
