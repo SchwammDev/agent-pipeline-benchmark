@@ -22,3 +22,7 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["toy-corpus"]
+addopts = "-m 'not liubai'"
+markers = [
+    "liubai: contacts the live Aqueduct model and burns compute; run with -m liubai",
+]
