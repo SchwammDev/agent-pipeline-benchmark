@@ -7,7 +7,7 @@ Current decisions with their reason. Changed decisions replace the line, history
 | Extensibility measured as total cost and success over a task's work items, each done by the pipeline under test on its own code | Real projects pay the total. Isolating "code quality" from "pipeline speed" answers a why-question we do not need |
 | Static measures are hypotheses, not scores | Clean-code advice targets human maintainers; whether it predicts agent cost is what the benchmark tests |
 | Harnesses invoked directly as subprocesses | No framework around the harness |
-| Claude Code and pi only, Python only, first | Get it working before widening |
+| Claude Code and liubai only, Python only, first | Get it working before widening |
 | Containers only, no bubblewrap | One path gives both pinned toolchain and isolation |
 | Corpus is a separate git repo, pointed at by URL and commit | Private, so tasks stay out of training data; swappable; benchmark owns the protocol |
 | Corpus holds only repository, tickets, hidden tests, reference solutions | Harness, prompts, hooks, containers are benchmark concerns |

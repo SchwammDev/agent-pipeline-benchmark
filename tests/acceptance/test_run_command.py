@@ -20,7 +20,7 @@ def test_running_an_experiment_prints_each_finished_run_and_exits_cleanly(
     toy_corpus: Path, definitions: Path, results: Path
 ) -> None:
     pipeline = a_pipeline(
-        "bare-pi", stages=[a_stage("implement", harness="reference-solution", model="claude-sonnet-5", prompt="implement.md")]
+        "bare-liubai", stages=[a_stage("implement", harness="reference-solution", model="deepseek-v4-flash", prompt="implement.md")]
     )
     experiment = an_experiment(
         "skeleton", tasks=["greeting"], corpus=toy_corpus, pipelines=[pipeline], repeats=1
@@ -36,18 +36,18 @@ def test_running_an_experiment_prints_each_finished_run_and_exits_cleanly(
 def test_a_typo_in_a_stage_field_stops_the_run_before_anything_is_recorded(
     toy_corpus: Path, definitions: Path, results: Path
 ) -> None:
-    pipeline = a_pipeline("bare-pi", stages=[a_stage("implement", harness="pi")])
+    pipeline = a_pipeline("bare-liubai", stages=[a_stage("implement", harness="liubai")])
     experiment = an_experiment(
         "skeleton", tasks=["greeting"], corpus=toy_corpus, pipelines=[pipeline], repeats=1
     )
     experiment_file = an_experiment_file_created_for(experiment, in_directory=definitions)
-    pipeline_file = definitions / "bare-pi.toml"
+    pipeline_file = definitions / "bare-liubai.toml"
     introduce_a_typo_in(pipeline_file, field="harness")
 
     command = run_apb("run", str(experiment_file), "--results", str(results))
 
     assert_the_command_failed(command)
-    assert_the_command_reported(command, "bare-pi.toml", "implement", "harncss")
+    assert_the_command_reported(command, "bare-liubai.toml", "implement", "harncss")
     assert_no_run_was_recorded(results)
 
 

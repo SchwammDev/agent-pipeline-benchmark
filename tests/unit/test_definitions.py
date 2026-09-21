@@ -151,11 +151,11 @@ def test_an_unknown_stage_field_is_reported_with_the_file_the_stage_and_the_fiel
     pipeline_file.write_text(
         '\n'.join(
             [
-                'name = "bare-pi"',
+                'name = "bare-liubai"',
                 '',
                 '[[stage]]',
                 'name = "implement"',
-                'harness = "pi"',
+                'harness = "liubai"',
                 'modle = "x"',
             ]
         )

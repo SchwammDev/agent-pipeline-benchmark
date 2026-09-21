@@ -30,11 +30,11 @@ pre_commit_hooks = ["ruff", "pyright"]
 
 | Field | Meaning |
 |---|---|
-| `harness` | `claude` or `pi` |
+| `harness` | `claude` or `liuba` |
 | `model` | Model id, per stage |
 | `prompt` | Template in `prompts/`. The implement template receives the ticket. Cleanup templates receive `prompt_args`. Whether cleanup sees the ticket is a template choice |
-| `instructions` | Instruction file written into the working copy (`CLAUDE.md` or pi equivalent). `none` writes nothing |
-| `harness_hooks` | Names from the hook catalogue, rendered into Claude Code settings or pi environment variables |
+| `instructions` | Instruction file written into the working copy (`CLAUDE.md` or liubai equivalent). `none` writes nothing |
+| `harness_hooks` | Names from the hook catalogue, rendered into Claude Code settings or liubai environment variables |
 | `pre_commit_hooks` | Names from the hook catalogue, rendered into a pre-commit configuration in the working copy |
 | `max_turns`, `max_cost_usd` | Caps. Hitting one ends the stage with end reason `limit` |
 

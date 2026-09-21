@@ -19,8 +19,8 @@ The corpus knows nothing about harnesses, prompts, hooks or containers. Protocol
 |---|---|
 | Language | Python 3.13, `uv`, `pytest` |
 | Definitions | TOML, validated by Pydantic |
-| Harness invocation | `subprocess`: `claude -p --output-format stream-json`, `pi --mode json`; one adapter per harness parses events into a common event model |
-| Containers | `docker` CLI, podman-compatible; one base image with Python, node, Claude Code, pi, analyzers; per-task image adds the repository's dependencies via `uv sync` |
+| Harness invocation | `subprocess`: `claude -p --output-format stream-json`, `liubai --mode json`; one adapter per harness parses events into a common event model |
+| Containers | `docker` CLI, podman-compatible; one base image with Python, node, Claude Code, liubai, analyzers; per-task image adds the repository's dependencies via `uv sync` |
 | Snapshots | git commit in the working copy after every stage, hooks bypassed; only the stage diff is kept |
 | Run records | Files only: `record.json` per run, raw `events.jsonl` per stage. No database |
 | Storage | `results/` mirrored to a remote with rclone; backend open |

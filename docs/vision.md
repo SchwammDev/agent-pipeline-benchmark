@@ -1,6 +1,6 @@
 # Vision
 
-A benchmark for comparing how coding agents are set up, not which model is best. It answers questions like: does hook nudging during coding beat a cleanup pass afterwards? What does each cost? Can a weaker model do the first pass? Does splitting cleanup by category help? Does Claude Code or pi do this better? Underneath all of them: which setup produces code that an agent can keep changing cheaply.
+A benchmark for comparing how coding agents are set up, not which model is best. It answers questions like: does hook nudging during coding beat a cleanup pass afterwards? What does each cost? Can a weaker model do the first pass? Does splitting cleanup by category help? Does Claude Code or liubai do this better? Underneath all of them: which setup produces code that an agent can keep changing cheaply.
 
 ## End goal
 
@@ -42,11 +42,11 @@ Running and scoring are separate. Cheap scorers run immediately. Slow or new sco
 
 ## Hooks
 
-Hooks belong to the pipeline under test. A stage declares which harness hooks and which pre-commit hooks are on. Harness hooks give feedback at tool time, pre-commit hooks at commit time, a cleanup stage afterwards; the same feedback at three moments. In the pi harness a harness hook is an environment variable; for Claude Code the same knob writes a settings file. Scorers do not depend on hooks in any way. Recorded: hook presence per stage and every hook event in the trace.
+Hooks belong to the pipeline under test. A stage declares which harness hooks and which pre-commit hooks are on. Harness hooks give feedback at tool time, pre-commit hooks at commit time, a cleanup stage afterwards; the same feedback at three moments. In the liubai harness a harness hook is an environment variable; for Claude Code the same knob writes a settings file. Scorers do not depend on hooks in any way. Recorded: hook presence per stage and every hook event in the trace.
 
 ## Reproducibility
 
-- One container image per task pins Python, node, pi, Claude Code, analyzers and dependencies. Runs with docker or rootless podman. Claude Code's built-in sandbox is off inside the container.
+- One container image per task pins Python, node, liubai, Claude Code, analyzers and dependencies. Runs with docker or rootless podman. Claude Code's built-in sandbox is off inside the container.
 - Every run record stores the version of everything and the exact model snapshot.
 - Two controls per task. A do-nothing agent must score zero. The reference solution must pass the hidden tests and defines the baseline for static measures.
 - Borrowed repositories bring test suites written by other people, and a few of those tests fail now and then regardless of the code, because of timing, the current date, the network, or test order. When a task is built, its suite runs ten times on the reference solution and any test that fails in some of those runs is excluded from the hidden set. For our own tasks we write the tests, so this is only a safety net.
@@ -72,7 +72,7 @@ A human-readable frontend for qualitative judgment. Navigation: pipeline, task, 
 | | First version | Later |
 |---|---|---|
 | Language | Python | TypeScript, then others |
-| Harnesses | Claude Code, pi | Any with headless mode and hooks |
+| Harnesses | Claude Code, liubai | Any with headless mode and hooks |
 | Tasks | ~20 SWE-bench tasks for calibration, 5–10 own multi-work-item tasks | More own tasks |
 | Scoring | Hidden tests, cost, static measures, trace facts | Mutation testing |
 | Tooling | Runner, run inspector | |
