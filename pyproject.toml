@@ -32,3 +32,6 @@ markers = [
 
 [tool.coverage.run]
 source = ["agent_pipeline_benchmark"]
+
+[tool.ty.src]
+exclude = ["tests/toy-corpus"]

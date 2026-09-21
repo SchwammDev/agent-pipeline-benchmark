@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 LIUBAI_MODEL = "deepseek-v4-flash-284b"
 IMPLEMENT_PROMPT = "implement.md"
@@ -45,7 +46,7 @@ def a_pipeline(name: str, *, stages: list[Stage]) -> Pipeline:
     return Pipeline(name, stages)
 
 
-def an_experiment(name: str, *, tasks: list[str], corpus: Path, pipelines: list[Pipeline | str], repeats: int) -> Experiment:
+def an_experiment(name: str, *, tasks: list[str], corpus: Path, pipelines: list[Pipeline], repeats: int) -> Experiment:
     return Experiment(name, corpus, pipelines, tasks, repeats)
 
 
@@ -313,7 +314,7 @@ def the_hidden_test_ids_in(directory: Path) -> set[str]:
 def the_recorded_test_verdicts(scoring: dict) -> dict[str, bool]:
     verdicts = {}
 
-    def walk(node: object) -> None:
+    def walk(node: Any) -> None:
         if isinstance(node, dict):
             name = node.get("name") or node.get("id")
             if isinstance(name, str) and "passed" in node:

@@ -140,7 +140,7 @@ def run_pipeline_on_task(
     task: Task,
     run_number: int,
     *,
-    corpus: Path | None = None,
+    corpus: Path,
     harness_named: HarnessResolver = harness_named,
     score: Scorer = score_hidden_tests,
     results: Path | None = None,

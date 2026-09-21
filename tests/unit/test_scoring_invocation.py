@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -22,7 +23,7 @@ def test_scoring_runs_pytest_in_the_working_copys_own_environment_not_a_nested_u
 
     real_run = subprocess.run
 
-    def record(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+    def record(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
         commands.append(command)
         return real_run(command, **kwargs)
 

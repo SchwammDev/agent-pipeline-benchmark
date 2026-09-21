@@ -1,6 +1,8 @@
 import os
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -94,7 +96,7 @@ def pipeline_error(error: ValidationError, document: dict, path: Path) -> ValueE
     return ValueError(f"{path}: " + "; ".join(messages))
 
 
-def stage_error_message(document: dict, issue: dict) -> str:
+def stage_error_message(document: dict, issue: Mapping[str, Any]) -> str:
     location = issue["loc"]
     if location and location[0] == "stage":
         field = stage_field(location)

@@ -77,7 +77,7 @@ def test_movements(before: frozenset[str], after: frozenset[str]) -> TestMovemen
     )
 
 
-test_movements.__test__ = False
+test_movements.__test__ = False  # ty: ignore[unresolved-attribute]
 
 
 def run_full_suite(junit_xml: Path, working_copy: Path) -> subprocess.CompletedProcess:

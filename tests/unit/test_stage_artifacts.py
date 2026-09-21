@@ -75,7 +75,7 @@ def test_the_working_copy_is_a_git_repository_with_one_initial_commit_before_the
     pipeline = PipelineDefinition(name="bare", stages=(a_plain_stage(),))
     harness = DiffApplyingHarness()
 
-    run_pipeline_on_task("skeleton", pipeline, task, 1, harness_named=resolver_of(harness))
+    run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolver_of(harness))
 
     assert harness.commit_count_when_the_stage_ran == 1
 

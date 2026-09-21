@@ -14,7 +14,7 @@ def run_benchmark_with(tmp_path: Path, *, harness: str) -> Path:
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness=harness),))
     results = tmp_path / "results"
 
-    run_pipeline_on_task("skeleton", pipeline, task, 1, results=results)
+    run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=TOY_CORPUS, results=results)
 
     scoring_files = list(results.glob("skeleton/bare/greeting/*/work-items/01-greet/scoring/hidden-tests.json"))
     assert len(scoring_files) == 1, f"expected one scoring file, found {len(scoring_files)}"

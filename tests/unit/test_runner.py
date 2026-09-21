@@ -9,7 +9,7 @@ from agent_pipeline_benchmark.corpus import WorkItem, load_task
 from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
 from agent_pipeline_benchmark.harnesses import Harness, StageCost, StageOutcome, ZERO_COST
 from agent_pipeline_benchmark.hidden_tests import TestVerdict
-from agent_pipeline_benchmark.runner import HarnessResolver, Scorer, run_experiment, run_pipeline_on_task
+from agent_pipeline_benchmark.runner import HarnessResolver, RunRecord, Scorer, run_experiment, run_pipeline_on_task
 
 PACKAGE_TEST = "tests.test_package::test_package_is_importable"
 GREETING_TESTS = [
@@ -111,7 +111,9 @@ def test_the_injected_scorer_decides_what_the_record_reports(toy_corpus: Path) -
         ]
     )
 
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1, score=lambda item, copy: next(verdicts_per_scoring))
+    record = run_pipeline_on_task(
+        "skeleton", pipeline, task, 1, corpus=toy_corpus, score=lambda item, copy: next(verdicts_per_scoring)
+    )
 
     assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(1, 1, True)]
 
@@ -127,7 +129,7 @@ def test_a_run_prepares_the_working_copys_environment_before_scoring(toy_corpus:
         return scoring_only_the_package_test(work_item, working_copy)
 
     record = run_pipeline_on_task(
-        "skeleton", pipeline, task, 1, score=scoring_that_requires_a_prepared_environment
+        "skeleton", pipeline, task, 1, corpus=toy_corpus, score=scoring_that_requires_a_prepared_environment
     )
 
     assert [item.solved for item in record.work_items] == [False]
@@ -154,7 +156,7 @@ def test_the_stages_of_a_pipeline_are_applied_in_order_to_the_same_working_copy(
         }
     )
 
-    run_pipeline_on_task("skeleton", pipeline, task, 1, harness_named=resolve)
+    run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolve)
 
     harness_names_in_order = [name for name, _, _ in calls]
     working_copies_seen = {working_copy for _, _, working_copy in calls}
@@ -175,7 +177,7 @@ def test_totals_sum_tokens_and_usd_over_all_stages_and_work_items(toy_corpus: Pa
         }
     )
 
-    record = run_pipeline_on_task("skeleton", pipeline, task, 1, harness_named=resolve)
+    record = run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolve)
 
     assert record.totals() == {"solved": 0, "tokens": 150, "usd": 0.75}
 
@@ -187,7 +189,9 @@ def test_the_tasks_repository_is_untouched_by_a_run_with_the_reference_solution_
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
     before = snapshot_of(task.repository)
 
-    run_pipeline_on_task("skeleton", pipeline, task, 1, score=scoring_only_the_package_test)
+    run_pipeline_on_task(
+        "skeleton", pipeline, task, 1, corpus=toy_corpus, score=scoring_only_the_package_test
+    )
 
     assert snapshot_of(task.repository) == before
 
@@ -206,7 +210,7 @@ def test_the_records_json_has_the_shape_in_the_spec(toy_corpus: Path) -> None:
 
 
 def assert_the_record_keeps_the_spec_shape(
-    record: object, *, corpus: Path, harnesses: list[str]
+    record: RunRecord, *, corpus: Path, harnesses: list[str]
 ) -> None:
     js = record.as_json()
     identity = js["identity"]
@@ -225,7 +229,7 @@ def assert_the_record_keeps_the_spec_shape(
 
 
 def assert_the_identity_group(
-    identity: dict, record: object, *, corpus: Path, harnesses: list[str]
+    identity: dict, record: RunRecord, *, corpus: Path, harnesses: list[str]
 ) -> None:
     assert identity["experiment"] == "skeleton"
     assert identity["pipeline"] == "bare"
@@ -312,7 +316,9 @@ def test_the_recorded_stage_diff_holds_the_reference_solution(tmp_path: Path, to
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="reference-solution"),))
     results = tmp_path / "results"
 
-    run_pipeline_on_task("skeleton", pipeline, task, 1, results=results, score=scoring_only_the_package_test)
+    run_pipeline_on_task(
+        "skeleton", pipeline, task, 1, corpus=toy_corpus, results=results, score=scoring_only_the_package_test
+    )
 
     diff = the_recorded_stage_diff(results, task="greeting")
     reference = toy_corpus / "greeting" / "work-items" / "01-greet" / "reference.diff"
@@ -327,7 +333,7 @@ def test_the_recorded_stage_diff_holds_the_regression_change(tmp_path: Path, toy
     results = tmp_path / "results"
 
     run_pipeline_on_task(
-        "skeleton", pipeline, task, 1, results=results, score=scoring_only_the_package_test
+        "skeleton", pipeline, task, 1, corpus=toy_corpus, results=results, score=scoring_only_the_package_test
     )
 
     diff = the_recorded_stage_diff(results, task="greeting")
