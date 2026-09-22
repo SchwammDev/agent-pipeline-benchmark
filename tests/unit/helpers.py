@@ -1,4 +1,25 @@
+import subprocess
 from pathlib import Path
+
+from agent_pipeline_benchmark.development_environments import DevelopmentEnvironment
+
+EMPTY_SUITE_JUNIT = (
+    "<?xml version='1.0' encoding='utf-8'?>\n"
+    "<testsuites><testsuite name='pytest' errors='0' failures='0' skipped='0' tests='0' time='0'/></testsuites>\n"
+)
+
+
+class EmptySuiteEnvironment(DevelopmentEnvironment):
+    def prepare(self) -> None: ...
+
+    def run(self, command: list[str]) -> subprocess.CompletedProcess:
+        junit_xml = Path(command[command.index("--junitxml") + 1])
+        junit_xml.write_text(EMPTY_SUITE_JUNIT)
+        return subprocess.CompletedProcess(command, returncode=0)
+
+
+def new_empty_suite_environment(working_copy: Path) -> EmptySuiteEnvironment:
+    return EmptySuiteEnvironment(working_copy)
 
 
 def snapshot_of(directory: Path) -> dict[Path, str]:

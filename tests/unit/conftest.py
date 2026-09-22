@@ -1,4 +1,5 @@
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -18,12 +19,37 @@ def toy_corpus() -> Path:
     return TOY_CORPUS
 
 
-@pytest.fixture
-def working_copy(tmp_path: Path) -> Path:
+@pytest.fixture(scope="session")
+def a_prepared_copy_of(tmp_path_factory: pytest.TempPathFactory) -> Callable[[Path], Path]:
+    def prepare(repository: Path) -> Path:
+        destination = tmp_path_factory.mktemp("prepared") / repository.name
+        shutil.copytree(repository, destination, ignore=shutil.ignore_patterns(".venv", "__pycache__"))
+        UVDevelopmentEnvironment(destination).prepare()
+        return destination
+
+    return prepare
+
+
+@pytest.fixture(scope="session")
+def prepared_greeting_copy(a_prepared_copy_of: Callable[[Path], Path]) -> Path:
+    return a_prepared_copy_of(GREETING_REPO)
+
+
+@pytest.fixture(scope="session")
+def prepared_already_done_copy(a_prepared_copy_of: Callable[[Path], Path]) -> Path:
+    return a_prepared_copy_of(ALREADY_DONE_REPO)
+
+
+def a_working_copy_from(tmp_path: Path, prepared_copy: Path) -> Path:
     destination = tmp_path / "working-copy"
-    shutil.copytree(GREETING_REPO, destination, ignore=shutil.ignore_patterns(".venv", "__pycache__"))
-    UVDevelopmentEnvironment(destination).prepare()
+    shutil.copytree(prepared_copy, destination, ignore=shutil.ignore_patterns(".venv"))
+    (destination / ".venv").symlink_to(prepared_copy / ".venv", target_is_directory=True)
     return destination
+
+
+@pytest.fixture
+def working_copy(tmp_path: Path, prepared_greeting_copy: Path) -> Path:
+    return a_working_copy_from(tmp_path, prepared_greeting_copy)
 
 
 @pytest.fixture
@@ -42,13 +68,8 @@ def greet_work_item() -> WorkItem:
 
 
 @pytest.fixture
-def already_done_working_copy(tmp_path: Path) -> Path:
-    destination = tmp_path / "working-copy"
-    shutil.copytree(
-        ALREADY_DONE_REPO, destination, ignore=shutil.ignore_patterns(".venv", "__pycache__")
-    )
-    UVDevelopmentEnvironment(destination).prepare()
-    return destination
+def already_done_working_copy(tmp_path: Path, prepared_already_done_copy: Path) -> Path:
+    return a_working_copy_from(tmp_path, prepared_already_done_copy)
 
 
 @pytest.fixture

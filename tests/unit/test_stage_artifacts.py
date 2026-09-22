@@ -8,6 +8,7 @@ from agent_pipeline_benchmark.harnesses import Harness, StageOutcome, ZERO_COST
 from agent_pipeline_benchmark.prompts import render_prompt
 from agent_pipeline_benchmark.runner import HarnessResolver, run_experiment, run_pipeline_on_task, run_stage
 from agent_pipeline_benchmark.snapshots import initialise_snapshot
+from helpers import new_empty_suite_environment
 
 CANNED_EVENTS = ({"type": "message_end", "message": {"role": "assistant"}}, {"type": "agent_end"})
 
@@ -98,7 +99,7 @@ def test_the_working_copy_is_a_git_repository_with_one_initial_commit_before_the
     pipeline = PipelineDefinition(name="bare", stages=(a_plain_stage(),))
     harness = DiffApplyingHarness()
 
-    run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolver_of(harness))
+    run_pipeline_on_task("skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolver_of(harness), new_environment=new_empty_suite_environment)
 
     assert harness.commit_count_when_the_stage_ran == 1
 
@@ -179,7 +180,7 @@ def test_the_record_carries_the_measures_of_the_agents_run_per_stage(
     pipeline = PipelineDefinition(name="bare", stages=(a_plain_stage(),))
 
     record = run_pipeline_on_task(
-        "skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolver_of(DiffApplyingHarness())
+        "skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolver_of(DiffApplyingHarness()), new_environment=new_empty_suite_environment
     )
 
     assert_the_stage_measures_recorded_in_the_record(record.as_json()["work_items"][0])
@@ -192,7 +193,7 @@ def test_the_record_omits_the_measures_when_the_stage_has_no_events(
     pipeline = PipelineDefinition(name="bare", stages=(a_plain_stage(),))
 
     record = run_pipeline_on_task(
-        "skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolver_of(NoEventsHarness())
+        "skeleton", pipeline, task, 1, corpus=toy_corpus, harness_named=resolver_of(NoEventsHarness()), new_environment=new_empty_suite_environment
     )
 
     assert_the_stage_measures_omitted_in_the_record(record.as_json()["work_items"][0])
@@ -219,7 +220,7 @@ def test_the_run_directory_holds_no_working_copy_and_nothing_beyond_the_recorded
     )
     results = tmp_path / "results"
 
-    written = run_experiment(experiment, results)
+    written = run_experiment(experiment, results, new_environment=new_empty_suite_environment)
 
     run_directory = written[0].parent
     actual = sorted(str(path.relative_to(run_directory)) for path in run_directory.rglob("*") if path.is_file())
