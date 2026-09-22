@@ -44,26 +44,28 @@ def definitions(tmp_path: Path) -> Path:
     return tmp_path / "definitions"
 
 
+def the_fake_liubai_script() -> str:
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            'if [ "$1" = "--version" ]; then',
+            f'  echo "{FAKE_AGENT_VERSION}"',
+            "  exit 0",
+            "fi",
+            "cat <<'EOF'",
+            FAKE_AGENT_STREAM,
+            "EOF",
+            "",
+        ]
+    )
+
+
 @pytest.fixture
 def fake_liubai(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     executable = bin_dir / "liubai"
-    executable.write_text(
-        "\n".join(
-            [
-                "#!/bin/sh",
-                'if [ "$1" = "--version" ]; then',
-                f'  echo "{FAKE_AGENT_VERSION}"',
-                "  exit 0",
-                "fi",
-                "cat <<'EOF'",
-                FAKE_AGENT_STREAM,
-                "EOF",
-                "",
-            ]
-        )
-    )
+    executable.write_text(the_fake_liubai_script())
     executable.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     return bin_dir

@@ -17,7 +17,7 @@ import pytest
 from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
 from agent_pipeline_benchmark.environments import EnvironmentUnavailable, ExecutionEnvironment
 
-from conftest import FAKE_AGENT_STREAM, FAKE_AGENT_VERSION, THE_UNPREPARABLE_REASON
+from conftest import FAKE_AGENT_STREAM, FAKE_AGENT_VERSION, THE_UNPREPARABLE_REASON, the_fake_liubai_script
 
 LIUBAI_MODEL = "deepseek-v4-flash-284b"
 IMPLEMENT_PROMPT = "implement.md"
@@ -46,6 +46,7 @@ class Experiment:
     pipelines: list[Pipeline]
     tasks: list[str]
     repeats: int
+    environment: dict[str, str] | None = None
 
 
 def a_stage(name: str, *, harness: str, model: str | None = None, prompt: str | None = None) -> Stage:
@@ -56,8 +57,16 @@ def a_pipeline(name: str, *, stages: list[Stage]) -> Pipeline:
     return Pipeline(name, stages)
 
 
-def an_experiment(name: str, *, tasks: list[str], corpus: Path, pipelines: list[Pipeline], repeats: int) -> Experiment:
-    return Experiment(name, corpus, pipelines, tasks, repeats)
+def an_experiment(
+    name: str,
+    *,
+    tasks: list[str],
+    corpus: Path,
+    pipelines: list[Pipeline],
+    repeats: int,
+    environment: dict[str, str] | None = None,
+) -> Experiment:
+    return Experiment(name, corpus, pipelines, tasks, repeats, environment)
 
 
 @dataclass(frozen=True)
@@ -97,6 +106,26 @@ def assert_each_finished_run_path_was_printed(command: CommandResult, *, expecte
 def assert_no_run_was_recorded(results: Path) -> None:
     records = list(results.rglob("record.json"))
     assert not records, f"runs were recorded before the definitions were validated: {records}"
+
+
+def a_dockerfile_baking_in_the_fake_liubai(*, in_directory: Path) -> Path:
+    image_directory = in_directory / "image"
+    image_directory.mkdir(parents=True, exist_ok=True)
+    executable = image_directory / "liubai"
+    executable.write_text(the_fake_liubai_script())
+    executable.chmod(0o755)
+    dockerfile = image_directory / "Dockerfile"
+    dockerfile.write_text(
+        "\n".join(
+            [
+                "FROM alpine",
+                "COPY liubai /usr/local/bin/liubai",
+                "RUN chmod +x /usr/local/bin/liubai",
+                "",
+            ]
+        )
+    )
+    return dockerfile
 
 
 def an_experiment_file_created_for(experiment: Experiment, *, in_directory: Path) -> Path:
@@ -481,17 +510,17 @@ def the_hidden_tests_of(corpus: Path, task: str) -> list[Path]:
 def write_experiment(experiment: Experiment, directory: Path) -> Path:
     pipeline_references = [str(write_pipeline(pipeline, directory)) for pipeline in experiment.pipelines]
     experiment_file = directory / f"{experiment.name}.toml"
-    experiment_file.write_text(
-        "\n".join(
-            [
-                f'name = "{experiment.name}"',
-                f'corpus = {{ path = "{experiment.corpus}" }}',
-                f"pipelines = {toml_strings(pipeline_references)}",
-                f"tasks = {toml_strings(experiment.tasks)}",
-                f"repeats = {experiment.repeats}",
-            ]
-        )
-    )
+    lines = [
+        f'name = "{experiment.name}"',
+        f'corpus = {{ path = "{experiment.corpus}" }}',
+        f"pipelines = {toml_strings(pipeline_references)}",
+        f"tasks = {toml_strings(experiment.tasks)}",
+        f"repeats = {experiment.repeats}",
+    ]
+    if experiment.environment is not None:
+        dockerfile = os.path.relpath(experiment.environment["dockerfile"], directory)
+        lines.append(f'environment = {{ dockerfile = "{dockerfile}" }}')
+    experiment_file.write_text("\n".join(lines))
     return experiment_file
 
 
@@ -571,6 +600,16 @@ def experiment_definition_of(experiment: Experiment) -> ExperimentDefinition:
         tasks=tuple(experiment.tasks),
         repeats=experiment.repeats,
     )
+
+
+def assert_the_run_ran_inside_the_container(results: Path, *, liubai_version: str) -> None:
+    run_directory = the_run_directory_of(results, experiment="skeleton", pipeline="bare", task="greeting")
+    record = the_run_record_in(run_directory)
+    versions = record["identity"].get("harness_versions", {})
+    assert versions.get("liubai") == liubai_version, (
+        f"the record does not name the liubai version provided inside the container ({liubai_version!r}): {versions}"
+    )
+    the_stage_events(run_directory, work_item="01-greet", stage="01-implement")
 
 
 def assert_the_environment_was_prepared_exactly_once(environment: ScriptedExecutionEnvironment) -> None:

@@ -25,9 +25,10 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["toy-corpus"]
-addopts = "-m 'not liubai' --cov=agent_pipeline_benchmark --cov-report=term-missing:skip-covered"
+addopts = "-m 'not liubai and not docker' --cov=agent_pipeline_benchmark --cov-report=term-missing:skip-covered"
 markers = [
     "liubai: contacts the live Aqueduct model and burns compute; run with -m liubai",
+    "docker: builds a container image and needs a container runtime; run with -m docker",
 ]
 
 [tool.coverage.run]
