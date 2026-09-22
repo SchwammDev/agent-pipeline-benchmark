@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agent_pipeline_benchmark.corpus import WorkItem
+from agent_pipeline_benchmark.development_environments import DevelopmentEnvironment
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,8 @@ SCORING_CACHE: dict[bytes, list[TestVerdict]] = {}
 NOT_PART_OF_THE_WORKING_COPY = {".venv", ".git", "__pycache__", ".pytest_cache"}
 
 
-def score_hidden_tests(work_item: WorkItem, working_copy: Path) -> list[TestVerdict]:
+def score_hidden_tests(work_item: WorkItem, environment: DevelopmentEnvironment) -> list[TestVerdict]:
+    working_copy = environment.working_copy
     destination = working_copy / "tests"
     copied_files = copy_hidden_tests(work_item.hidden_tests, destination)
     try:
@@ -44,7 +46,7 @@ def score_hidden_tests(work_item: WorkItem, working_copy: Path) -> list[TestVerd
             return list(SCORING_CACHE[cache_key])
         with tempfile.TemporaryDirectory() as tmp:
             junit_xml = Path(tmp) / "junit.xml"
-            run_full_suite(junit_xml, working_copy)
+            run_full_suite(junit_xml, environment)
             verdicts = record_every_hidden_test(junit_test_verdicts(junit_xml), work_item)
         SCORING_CACHE[cache_key] = verdicts
         return list(verdicts)
@@ -65,8 +67,8 @@ def the_content_of(directory: Path) -> bytes:
     return hasher.digest()
 
 
-def passing_test_ids(work_item: WorkItem, working_copy: Path) -> frozenset[str]:
-    return frozenset(verdict.name for verdict in score_hidden_tests(work_item, working_copy) if verdict.passed)
+def passing_test_ids(work_item: WorkItem, environment: DevelopmentEnvironment) -> frozenset[str]:
+    return frozenset(verdict.name for verdict in score_hidden_tests(work_item, environment) if verdict.passed)
 
 
 def test_movements(before: frozenset[str], after: frozenset[str]) -> TestMovements:
@@ -80,12 +82,9 @@ def test_movements(before: frozenset[str], after: frozenset[str]) -> TestMovemen
 test_movements.__test__ = False  # ty: ignore[unresolved-attribute]
 
 
-def run_full_suite(junit_xml: Path, working_copy: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [str(working_copy / ".venv" / "bin" / "python"), "-m", "pytest", "-q", "--continue-on-collection-errors", "--junitxml", str(junit_xml)],
-        cwd=working_copy,
-        capture_output=True,
-        check=False,
+def run_full_suite(junit_xml: Path, environment: DevelopmentEnvironment) -> subprocess.CompletedProcess:
+    return environment.run(
+        ["python", "-m", "pytest", "-q", "--continue-on-collection-errors", "--junitxml", str(junit_xml)]
     )
 
 

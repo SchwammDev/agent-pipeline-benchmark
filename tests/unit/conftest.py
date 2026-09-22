@@ -27,6 +27,11 @@ def working_copy(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def development_environment(working_copy: Path) -> UVDevelopmentEnvironment:
+    return UVDevelopmentEnvironment(working_copy)
+
+
+@pytest.fixture
 def greet_work_item() -> WorkItem:
     return WorkItem(
         name="01-greet",
@@ -44,6 +49,11 @@ def already_done_working_copy(tmp_path: Path) -> Path:
     )
     UVDevelopmentEnvironment(destination).prepare()
     return destination
+
+
+@pytest.fixture
+def already_done_development_environment(already_done_working_copy: Path) -> UVDevelopmentEnvironment:
+    return UVDevelopmentEnvironment(already_done_working_copy)
 
 
 @pytest.fixture

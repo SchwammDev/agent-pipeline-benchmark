@@ -21,10 +21,12 @@ GREETING_TESTS = [
 
 def a_scorer_returning(*scorings: list[TestVerdict]) -> Scorer:
     remaining = iter(scorings)
-    return lambda work_item, working_copy: next(remaining)
+    return lambda work_item, environment: next(remaining)
 
 
-def scoring_only_the_package_test(work_item: WorkItem, working_copy: Path) -> list[TestVerdict]:
+def scoring_only_the_package_test(
+    work_item: WorkItem, environment: DevelopmentEnvironment
+) -> list[TestVerdict]:
     return [TestVerdict(name=PACKAGE_TEST, passed=True)]
 
 
@@ -118,7 +120,7 @@ def test_the_injected_scorer_decides_what_the_record_reports(toy_corpus: Path) -
     )
 
     record = run_pipeline_on_task(
-        "skeleton", pipeline, task, 1, corpus=toy_corpus, score=lambda item, copy: next(verdicts_per_scoring)
+        "skeleton", pipeline, task, 1, corpus=toy_corpus, score=lambda item, environment: next(verdicts_per_scoring)
     )
 
     assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(1, 1, True)]
@@ -135,12 +137,12 @@ def test_a_run_prepares_the_working_copys_development_environment_before_scoring
         return environment
 
     def scoring_that_requires_a_prepared_environment(
-        work_item: WorkItem, working_copy: Path
+        work_item: WorkItem, environment: DevelopmentEnvironment
     ) -> list[TestVerdict]:
-        [environment] = environments
-        assert environment.prepared, "scoring ran before the development environment was prepared"
-        assert environment.working_copy == working_copy, "the environment is not bound to the scoring's working copy"
-        return scoring_only_the_package_test(work_item, working_copy)
+        [fake] = environments
+        assert environment is fake, "scoring did not receive the run's development environment"
+        assert fake.prepared, "scoring ran before the development environment was prepared"
+        return scoring_only_the_package_test(work_item, environment)
 
     record = run_pipeline_on_task(
         "skeleton",
@@ -162,6 +164,9 @@ class FakeDevelopmentEnvironment(DevelopmentEnvironment):
 
     def prepare(self) -> None:
         self.prepared = True
+
+    def run(self, command: list[str]) -> subprocess.CompletedProcess:
+        raise AssertionError(f"the fake development environment must not run commands: {command}")
 
 
 def test_the_stages_of_a_pipeline_are_applied_in_order_to_the_same_working_copy(

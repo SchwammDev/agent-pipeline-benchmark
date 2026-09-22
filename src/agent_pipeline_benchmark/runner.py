@@ -27,7 +27,7 @@ from agent_pipeline_benchmark.prompts import render_prompt
 from agent_pipeline_benchmark.snapshots import commit_snapshot, initialise_snapshot, the_staged_change
 
 HarnessResolver = Callable[[str], Harness]
-Scorer = Callable[[WorkItem, Path], list[TestVerdict]]
+Scorer = Callable[[WorkItem, DevelopmentEnvironment], list[TestVerdict]]
 EnvironmentFactory = Callable[[Path], DevelopmentEnvironment]
 
 
@@ -182,11 +182,12 @@ def run_pipeline_on_task(
             dirs_exist_ok=True,
             ignore=shutil.ignore_patterns(".venv", "__pycache__"),
         )
-        new_environment(working_copy).prepare()
+        environment = new_environment(working_copy)
+        environment.prepare()
         initialise_snapshot(working_copy)
         run_directory = the_run_directory(results, experiment, pipeline.name, task.name, run_id)
         work_items = tuple(
-            run_work_item(pipeline, work_item, working_copy, harness_named, score, run_directory)
+            run_work_item(pipeline, work_item, working_copy, environment, harness_named, score, run_directory)
             for work_item in task.work_items
         )
         harnesses = tuple(dict.fromkeys(stage.harness for stage in pipeline.stages))
@@ -221,16 +222,17 @@ def run_work_item(
     pipeline: PipelineDefinition,
     work_item: WorkItem,
     working_copy: Path,
+    environment: DevelopmentEnvironment,
     harness_named: HarnessResolver,
     score: Scorer,
     run_directory: Path | None,
 ) -> WorkItemRecord:
-    before = frozenset(verdict.name for verdict in score(work_item, working_copy) if verdict.passed)
+    before = frozenset(verdict.name for verdict in score(work_item, environment) if verdict.passed)
     stages = tuple(
         run_stage(stage, work_item, working_copy, harness_named, the_stage_directory(run_directory, work_item, stage, number))
         for number, stage in enumerate(pipeline.stages, start=1)
     )
-    after_verdicts = score(work_item, working_copy)
+    after_verdicts = score(work_item, environment)
     after = frozenset(verdict.name for verdict in after_verdicts if verdict.passed)
     movements = test_movements(before, after)
     scoring_directory = the_scoring_directory(run_directory, work_item)

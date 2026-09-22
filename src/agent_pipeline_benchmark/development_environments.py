@@ -12,6 +12,9 @@ class DevelopmentEnvironment(ABC):
     @abstractmethod
     def prepare(self) -> None: ...
 
+    @abstractmethod
+    def run(self, command: list[str]) -> subprocess.CompletedProcess: ...
+
 
 class UVDevelopmentEnvironment(DevelopmentEnvironment):
     def prepare(self) -> None:
@@ -22,6 +25,19 @@ class UVDevelopmentEnvironment(DevelopmentEnvironment):
             capture_output=True,
             check=True,
         )
+
+    def run(self, command: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            self.resolved(command),
+            cwd=self.working_copy,
+            capture_output=True,
+            check=False,
+        )
+
+    def resolved(self, command: list[str]) -> list[str]:
+        if command[0] == "python":
+            return [str(self.working_copy / ".venv" / "bin" / "python"), *command[1:]]
+        return command
 
 
 def new_uv_development_environment(working_copy: Path) -> DevelopmentEnvironment:

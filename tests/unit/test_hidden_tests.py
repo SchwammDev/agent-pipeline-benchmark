@@ -1,24 +1,25 @@
 from pathlib import Path
 
 from agent_pipeline_benchmark.corpus import WorkItem
+from agent_pipeline_benchmark.development_environments import UVDevelopmentEnvironment
 from agent_pipeline_benchmark.harnesses import ReferenceSolution
 from agent_pipeline_benchmark.hidden_tests import TestMovements, passing_test_ids, test_movements
 
 
 def test_passing_test_ids_on_an_untouched_working_copy_reports_only_the_package_test(
-    working_copy: Path, greet_work_item: WorkItem
+    development_environment: UVDevelopmentEnvironment, greet_work_item: WorkItem
 ) -> None:
-    assert passing_test_ids(greet_work_item, working_copy) == frozenset(
+    assert passing_test_ids(greet_work_item, development_environment) == frozenset(
         {"tests.test_package::test_package_is_importable"}
     )
 
 
 def test_passing_test_ids_includes_both_hidden_tests_after_the_reference_solution(
-    working_copy: Path, greet_work_item: WorkItem
+    development_environment: UVDevelopmentEnvironment, greet_work_item: WorkItem
 ) -> None:
-    ReferenceSolution().implement(greet_work_item, working_copy)
+    ReferenceSolution().implement(greet_work_item, development_environment.working_copy)
 
-    passing = passing_test_ids(greet_work_item, working_copy)
+    passing = passing_test_ids(greet_work_item, development_environment)
 
     assert len(passing) == 3
     assert "tests.test_greet::test_greets_the_given_name" in passing
@@ -27,29 +28,29 @@ def test_passing_test_ids_includes_both_hidden_tests_after_the_reference_solutio
 
 
 def test_hidden_test_files_are_removed_after_scoring_a_failing_copy(
-    working_copy: Path, greet_work_item: WorkItem
+    development_environment: UVDevelopmentEnvironment, greet_work_item: WorkItem
 ) -> None:
-    passing_test_ids(greet_work_item, working_copy)
+    passing_test_ids(greet_work_item, development_environment)
 
-    assert_hidden_test_files_absent(working_copy, greet_work_item)
+    assert_hidden_test_files_absent(development_environment.working_copy, greet_work_item)
 
 
 def test_hidden_test_files_are_removed_after_scoring_a_passing_copy(
-    working_copy: Path, greet_work_item: WorkItem
+    development_environment: UVDevelopmentEnvironment, greet_work_item: WorkItem
 ) -> None:
-    ReferenceSolution().implement(greet_work_item, working_copy)
+    ReferenceSolution().implement(greet_work_item, development_environment.working_copy)
 
-    passing_test_ids(greet_work_item, working_copy)
+    passing_test_ids(greet_work_item, development_environment)
 
-    assert_hidden_test_files_absent(working_copy, greet_work_item)
+    assert_hidden_test_files_absent(development_environment.working_copy, greet_work_item)
 
 
 def test_reference_solution_moves_both_hidden_tests_from_regressed_to_progressed(
-    working_copy: Path, greet_work_item: WorkItem
+    development_environment: UVDevelopmentEnvironment, greet_work_item: WorkItem
 ) -> None:
-    before = passing_test_ids(greet_work_item, working_copy)
-    ReferenceSolution().implement(greet_work_item, working_copy)
-    after = passing_test_ids(greet_work_item, working_copy)
+    before = passing_test_ids(greet_work_item, development_environment)
+    ReferenceSolution().implement(greet_work_item, development_environment.working_copy)
+    after = passing_test_ids(greet_work_item, development_environment)
 
     movements = test_movements(before, after)
 
@@ -57,10 +58,10 @@ def test_reference_solution_moves_both_hidden_tests_from_regressed_to_progressed
 
 
 def test_untouched_working_copy_preserves_but_never_progresses(
-    working_copy: Path, greet_work_item: WorkItem
+    development_environment: UVDevelopmentEnvironment, greet_work_item: WorkItem
 ) -> None:
-    before = passing_test_ids(greet_work_item, working_copy)
-    after = passing_test_ids(greet_work_item, working_copy)
+    before = passing_test_ids(greet_work_item, development_environment)
+    after = passing_test_ids(greet_work_item, development_environment)
 
     movements = test_movements(before, after)
 
@@ -68,10 +69,10 @@ def test_untouched_working_copy_preserves_but_never_progresses(
 
 
 def test_work_item_already_satisfied_preserves_all_tests_without_progressing(
-    already_done_working_copy: Path, already_done_work_item: WorkItem
+    already_done_development_environment: UVDevelopmentEnvironment, already_done_work_item: WorkItem
 ) -> None:
-    before = passing_test_ids(already_done_work_item, already_done_working_copy)
-    after = passing_test_ids(already_done_work_item, already_done_working_copy)
+    before = passing_test_ids(already_done_work_item, already_done_development_environment)
+    after = passing_test_ids(already_done_work_item, already_done_development_environment)
 
     movements = test_movements(before, after)
 
