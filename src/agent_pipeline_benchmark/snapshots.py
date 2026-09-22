@@ -9,7 +9,7 @@ GIT_IDENTITY_EMAIL = "benchmark@agent-pipeline-benchmark.invalid"
 
 def prepare_environment(working_copy: Path) -> None:
     subprocess.run(
-        ["uv", "sync", "--frozen", "--compile-bytecode"],
+        ["uv", "sync", "--frozen"],
         cwd=working_copy,
         env=environment_without_virtualenv(),
         capture_output=True,
