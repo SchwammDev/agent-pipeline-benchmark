@@ -12,6 +12,10 @@ from pathlib import Path
 
 from agent_pipeline_benchmark.corpus import Task, WorkItem, load_task
 from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
+from agent_pipeline_benchmark.development_environments import (
+    DevelopmentEnvironment,
+    new_uv_development_environment,
+)
 from agent_pipeline_benchmark.harnesses import (
     Harness,
     StageOutcome,
@@ -20,10 +24,11 @@ from agent_pipeline_benchmark.harnesses import (
 )
 from agent_pipeline_benchmark.hidden_tests import TestVerdict, score_hidden_tests, test_movements
 from agent_pipeline_benchmark.prompts import render_prompt
-from agent_pipeline_benchmark.snapshots import commit_snapshot, initialise_snapshot, prepare_environment, the_staged_change
+from agent_pipeline_benchmark.snapshots import commit_snapshot, initialise_snapshot, the_staged_change
 
 HarnessResolver = Callable[[str], Harness]
 Scorer = Callable[[WorkItem, Path], list[TestVerdict]]
+EnvironmentFactory = Callable[[Path], DevelopmentEnvironment]
 
 
 @dataclass(frozen=True)
@@ -123,6 +128,7 @@ def run_experiment(
     *,
     harness_named: HarnessResolver = harness_named,
     score: Scorer = score_hidden_tests,
+    new_environment: EnvironmentFactory = new_uv_development_environment,
 ) -> list[Path]:
     written_records = []
     for pipeline in experiment.pipelines:
@@ -137,6 +143,7 @@ def run_experiment(
                     corpus=experiment.corpus,
                     harness_named=harness_named,
                     score=score,
+                    new_environment=new_environment,
                     results=results,
                 )
                 written_records.append(write_record(record, results))
@@ -162,6 +169,7 @@ def run_pipeline_on_task(
     corpus: Path,
     harness_named: HarnessResolver = harness_named,
     score: Scorer = score_hidden_tests,
+    new_environment: EnvironmentFactory = new_uv_development_environment,
     results: Path | None = None,
 ) -> RunRecord:
     start = datetime.now(timezone.utc)
@@ -174,7 +182,7 @@ def run_pipeline_on_task(
             dirs_exist_ok=True,
             ignore=shutil.ignore_patterns(".venv", "__pycache__"),
         )
-        prepare_environment(working_copy)
+        new_environment(working_copy).prepare()
         initialise_snapshot(working_copy)
         run_directory = the_run_directory(results, experiment, pipeline.name, task.name, run_id)
         work_items = tuple(

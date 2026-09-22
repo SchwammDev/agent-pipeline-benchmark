@@ -7,6 +7,7 @@ from helpers import snapshot_of
 
 from agent_pipeline_benchmark.corpus import WorkItem, load_task
 from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
+from agent_pipeline_benchmark.development_environments import DevelopmentEnvironment
 from agent_pipeline_benchmark.harnesses import Harness, StageCost, StageOutcome, ZERO_COST
 from agent_pipeline_benchmark.hidden_tests import TestVerdict
 from agent_pipeline_benchmark.runner import HarnessResolver, RunRecord, Scorer, run_experiment, run_pipeline_on_task
@@ -123,26 +124,44 @@ def test_the_injected_scorer_decides_what_the_record_reports(toy_corpus: Path) -
     assert [(item.progressed, item.preserved, item.solved) for item in record.work_items] == [(1, 1, True)]
 
 
-def test_a_run_prepares_the_working_copys_environment_before_scoring(toy_corpus: Path) -> None:
+def test_a_run_prepares_the_working_copys_development_environment_before_scoring(toy_corpus: Path) -> None:
     task = load_task(toy_corpus, "greeting")
     pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="do-nothing"),))
+    environments: list[FakeDevelopmentEnvironment] = []
+
+    def a_development_environment(working_copy: Path) -> FakeDevelopmentEnvironment:
+        environment = FakeDevelopmentEnvironment(working_copy)
+        environments.append(environment)
+        return environment
 
     def scoring_that_requires_a_prepared_environment(
         work_item: WorkItem, working_copy: Path
     ) -> list[TestVerdict]:
-        assert_the_working_copy_has_its_own_python(working_copy)
+        [environment] = environments
+        assert environment.prepared, "scoring ran before the development environment was prepared"
+        assert environment.working_copy == working_copy, "the environment is not bound to the scoring's working copy"
         return scoring_only_the_package_test(work_item, working_copy)
 
     record = run_pipeline_on_task(
-        "skeleton", pipeline, task, 1, corpus=toy_corpus, score=scoring_that_requires_a_prepared_environment
+        "skeleton",
+        pipeline,
+        task,
+        1,
+        corpus=toy_corpus,
+        score=scoring_that_requires_a_prepared_environment,
+        new_environment=a_development_environment,
     )
 
     assert [item.solved for item in record.work_items] == [False]
 
 
-def assert_the_working_copy_has_its_own_python(working_copy: Path) -> None:
-    python = working_copy / ".venv" / "bin" / "python"
-    assert python.exists(), f"expected a prepared environment at {python}"
+class FakeDevelopmentEnvironment(DevelopmentEnvironment):
+    def __init__(self, working_copy: Path) -> None:
+        super().__init__(working_copy)
+        self.prepared = False
+
+    def prepare(self) -> None:
+        self.prepared = True
 
 
 def test_the_stages_of_a_pipeline_are_applied_in_order_to_the_same_working_copy(

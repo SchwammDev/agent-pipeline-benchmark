@@ -7,7 +7,7 @@ import pytest
 
 from agent_pipeline_benchmark import hidden_tests
 from agent_pipeline_benchmark.corpus import WorkItem
-from agent_pipeline_benchmark.snapshots import prepare_environment
+from agent_pipeline_benchmark.development_environments import UVDevelopmentEnvironment
 
 
 @pytest.fixture(autouse=True)
@@ -18,7 +18,7 @@ def cold_scoring_cache(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_scoring_runs_pytest_in_the_working_copys_own_environment_not_a_nested_uv(
     working_copy: Path, greet_work_item: WorkItem, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    prepare_environment(working_copy)
+    UVDevelopmentEnvironment(working_copy).prepare()
     commands: list[list[str]] = []
 
     real_run = subprocess.run
@@ -46,7 +46,8 @@ def assert_pytest_ran_once_in_the_working_copys_own_environment(
 def test_scoring_a_second_identical_copy_reuses_the_first_verdicts(
     tmp_path: Path, working_copy: Path, greet_work_item: WorkItem, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    prepare_environment(working_copy)
+    prepare = UVDevelopmentEnvironment(working_copy)
+    prepare.prepare()
     second_copy = tmp_path / "second-copy"
     shutil.copytree(working_copy, second_copy)
     suite_runs = []
