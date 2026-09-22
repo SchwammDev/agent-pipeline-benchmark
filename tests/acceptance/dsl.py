@@ -1,14 +1,23 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from subprocess import CompletedProcess
 from typing import Any
+
+import pytest
+
+from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
+from agent_pipeline_benchmark.environments import EnvironmentUnavailable, ExecutionEnvironment
+
+from conftest import FAKE_AGENT_STREAM, FAKE_AGENT_VERSION, THE_UNPREPARABLE_REASON
 
 LIUBAI_MODEL = "deepseek-v4-flash-284b"
 IMPLEMENT_PROMPT = "implement.md"
@@ -504,3 +513,97 @@ def stage_lines(stage: Stage) -> list[str]:
 
 def toml_strings(values: Iterable[str]) -> str:
     return json.dumps(list(values))
+
+
+def the_scripted_agent_experiment(corpus: Path) -> Experiment:
+    stage = a_stage("implement", harness="scripted-agent")
+    return an_experiment(
+        "skeleton", tasks=["greeting"], corpus=corpus, pipelines=[a_pipeline("bare", stages=[stage])], repeats=1
+    )
+
+
+@dataclass
+class ScriptedExecutionEnvironment(ExecutionEnvironment):
+    agent_version: str = FAKE_AGENT_VERSION
+    preparations: int = 0
+    executed_commands: list[list[str]] = field(default_factory=list)
+    preparation_error: str | None = None
+
+    def prepare(self) -> None:
+        if self.preparation_error is not None:
+            raise EnvironmentUnavailable(self.preparation_error)
+        self.preparations += 1
+
+    def execute(self, command: Sequence[str], working_copy: Path) -> CompletedProcess:
+        self.executed_commands.append(list(command))
+        output = self.agent_version if "--version" in command else FAKE_AGENT_STREAM
+        return CompletedProcess(command, 0, stdout=output.encode(), stderr=b"")
+
+
+def a_preparable_execution_environment() -> ScriptedExecutionEnvironment:
+    return ScriptedExecutionEnvironment()
+
+
+def an_execution_environment_that_cannot_be_prepared() -> ScriptedExecutionEnvironment:
+    return ScriptedExecutionEnvironment(preparation_error=THE_UNPREPARABLE_REASON)
+
+
+def run_experiment_with(experiment: Experiment, results: Path, *, environment: ExecutionEnvironment) -> None:
+    from agent_pipeline_benchmark.runner import run_experiment as the_run
+
+    the_run(experiment_definition_of(experiment), results, environment=environment)  # ty: ignore[unknown-argument]
+
+
+def experiment_definition_of(experiment: Experiment) -> ExperimentDefinition:
+    return ExperimentDefinition(
+        name=experiment.name,
+        corpus=experiment.corpus,
+        pipelines=tuple(
+            PipelineDefinition(
+                name=pipeline.name,
+                stages=tuple(
+                    StageDefinition(name=stage.name, harness=stage.harness, model=stage.model, prompt=stage.prompt)
+                    for stage in pipeline.stages
+                ),
+            )
+            for pipeline in experiment.pipelines
+        ),
+        tasks=tuple(experiment.tasks),
+        repeats=experiment.repeats,
+    )
+
+
+def assert_the_environment_was_prepared_exactly_once(environment: ScriptedExecutionEnvironment) -> None:
+    assert environment.preparations == 1, (
+        f"the execution environment was prepared {environment.preparations} times, expected exactly once"
+    )
+
+
+def assert_the_run_ran_inside_the_prepared_environment(
+    results: Path, *, environment: ScriptedExecutionEnvironment
+) -> None:
+    assert environment.executed_commands, "the execution environment executed nothing for the run's stages"
+    record = run_record_of(results, experiment="skeleton", pipeline="bare", task="greeting")
+    assert_the_record_names_the_version_the_environment_provides(record, environment=environment)
+    run_directory = the_run_directory_of(results, experiment="skeleton", pipeline="bare", task="greeting")
+    assert_the_stage_event_stream_shows_the_agent_running(run_directory)
+
+
+def assert_the_record_names_the_version_the_environment_provides(
+    record: dict, *, environment: ScriptedExecutionEnvironment
+) -> None:
+    versions = record["identity"].get("harness_versions", {})
+    assert versions.get("scripted-agent") == environment.agent_version, (
+        f"the record does not name the version the execution environment provides ({environment.agent_version!r}): {versions}"
+    )
+
+
+def assert_the_stage_event_stream_shows_the_agent_running(run_directory: Path) -> None:
+    events = the_stage_events(run_directory, work_item="01-greet", stage="01-implement")
+    assert any(event.get("type") == "session" for event in events), "the event stream shows no agent session"
+    assert any(event.get("type") == "agent_end" for event in events), "the event stream shows no finished agent run"
+
+
+def delete_the_run_directory(results: Path, *, experiment: str, pipeline: str, task: str) -> None:
+    run_directory = the_run_directory_of(results, experiment=experiment, pipeline=pipeline, task=task)
+    shutil.rmtree(run_directory)

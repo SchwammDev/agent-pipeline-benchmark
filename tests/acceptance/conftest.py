@@ -5,9 +5,9 @@ import pytest
 
 TOY_CORPUS = Path(__file__).parent.parent / "toy-corpus"
 
-FAKE_LIUBAI_VERSION = "0.4.2"
+FAKE_AGENT_VERSION = "0.4.2"
 
-FAKE_LIUBAI_STREAM = "\n".join(
+FAKE_AGENT_STREAM = "\n".join(
     [
         '{"type":"session","version":3,"id":"fake-session","timestamp":"2026-02-14T00:00:00Z","cwd":"/repo"}',
         '{"type":"agent_start"}',
@@ -24,6 +24,9 @@ FAKE_LIUBAI_STREAM = "\n".join(
         '{"type":"agent_end","messages":[]}',
     ]
 )
+
+
+THE_UNPREPARABLE_REASON = "the container runtime cannot be reached"
 
 
 @pytest.fixture
@@ -51,11 +54,11 @@ def fake_liubai(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             [
                 "#!/bin/sh",
                 'if [ "$1" = "--version" ]; then',
-                f'  echo "{FAKE_LIUBAI_VERSION}"',
+                f'  echo "{FAKE_AGENT_VERSION}"',
                 "  exit 0",
                 "fi",
                 "cat <<'EOF'",
-                FAKE_LIUBAI_STREAM,
+                FAKE_AGENT_STREAM,
                 "EOF",
                 "",
             ]
