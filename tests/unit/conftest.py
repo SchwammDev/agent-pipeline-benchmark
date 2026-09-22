@@ -6,6 +6,7 @@ import pytest
 
 from agent_pipeline_benchmark.corpus import WorkItem
 from agent_pipeline_benchmark.development_environments import UVDevelopmentEnvironment
+from helpers import SharedVenvDevelopmentEnvironment
 
 TOY_CORPUS = Path(__file__).parent.parent / "toy-corpus"
 GREETING_WORK_ITEM = TOY_CORPUS / "greeting" / "work-items" / "01-greet"
@@ -53,8 +54,8 @@ def working_copy(tmp_path: Path, prepared_greeting_copy: Path) -> Path:
 
 
 @pytest.fixture
-def development_environment(working_copy: Path) -> UVDevelopmentEnvironment:
-    return UVDevelopmentEnvironment(working_copy)
+def development_environment(working_copy: Path) -> SharedVenvDevelopmentEnvironment:
+    return SharedVenvDevelopmentEnvironment(working_copy)
 
 
 @pytest.fixture
@@ -73,8 +74,8 @@ def already_done_working_copy(tmp_path: Path, prepared_already_done_copy: Path) 
 
 
 @pytest.fixture
-def already_done_development_environment(already_done_working_copy: Path) -> UVDevelopmentEnvironment:
-    return UVDevelopmentEnvironment(already_done_working_copy)
+def already_done_development_environment(already_done_working_copy: Path) -> SharedVenvDevelopmentEnvironment:
+    return SharedVenvDevelopmentEnvironment(already_done_working_copy)
 
 
 @pytest.fixture

@@ -8,6 +8,7 @@ import pytest
 from agent_pipeline_benchmark import development_environments, hidden_tests
 from agent_pipeline_benchmark.corpus import WorkItem
 from agent_pipeline_benchmark.development_environments import UVDevelopmentEnvironment
+from helpers import SharedVenvDevelopmentEnvironment
 
 
 @pytest.fixture(autouse=True)
@@ -42,6 +43,16 @@ def assert_pytest_ran_once_in_the_working_copys_own_environment(
     [pytest_command] = commands
     venv_python = working_copy / ".venv" / "bin" / "python"
     assert pytest_command[:3] == [str(venv_python), "-m", "pytest"], pytest_command
+
+
+def test_a_shared_venv_resolves_imports_from_the_working_copy_it_scores(
+    working_copy: Path,
+) -> None:
+    environment = SharedVenvDevelopmentEnvironment(working_copy)
+
+    result = environment.run(["python", "-c", "import greeting; print(greeting.__file__)"])
+
+    assert result.stdout.decode().strip().startswith(str(working_copy / "src"))
 
 
 def test_scoring_a_second_identical_copy_reuses_the_first_verdicts(

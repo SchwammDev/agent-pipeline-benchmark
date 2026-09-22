@@ -1,7 +1,8 @@
+import os
 import subprocess
 from pathlib import Path
 
-from agent_pipeline_benchmark.development_environments import DevelopmentEnvironment
+from agent_pipeline_benchmark.development_environments import DevelopmentEnvironment, UVDevelopmentEnvironment
 
 EMPTY_SUITE_JUNIT = (
     "<?xml version='1.0' encoding='utf-8'?>\n"
@@ -20,6 +21,23 @@ class EmptySuiteEnvironment(DevelopmentEnvironment):
 
 def new_empty_suite_environment(working_copy: Path) -> EmptySuiteEnvironment:
     return EmptySuiteEnvironment(working_copy)
+
+
+class SharedVenvDevelopmentEnvironment(UVDevelopmentEnvironment):
+    def run(self, command: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            self.resolved(command),
+            cwd=self.working_copy,
+            env=environment_resolving_imports_from_the_working_copy(self.working_copy),
+            capture_output=True,
+            check=False,
+        )
+
+
+def environment_resolving_imports_from_the_working_copy(working_copy: Path) -> dict[str, str]:
+    source_of_the_working_copy = str(working_copy / "src")
+    inherited = os.environ.get("PYTHONPATH", "")
+    return os.environ | {"PYTHONPATH": os.pathsep.join(filter(None, [source_of_the_working_copy, inherited]))}
 
 
 def snapshot_of(directory: Path) -> dict[Path, str]:
