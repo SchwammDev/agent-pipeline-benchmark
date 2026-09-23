@@ -14,4 +14,10 @@ RUN git init /opt/liubai-mind \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && PATH="${HOME}/.local/bin:${PATH}" bash /opt/liubai-mind/setup.sh
 
+RUN chmod 711 /root \
+    && chmod -R a+rwX /root/.pi \
+    && mkdir -p /root/.cache \
+    && chmod -R a+rwX /root/.cache \
+    && chmod -R a+rX /root/.config /root/.local /opt/liubai-mind
+
 ENV PATH="/root/.local/bin:${PATH}"

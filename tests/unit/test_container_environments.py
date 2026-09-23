@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -80,6 +81,16 @@ def test_executing_a_command_runs_it_inside_the_container_with_the_working_copy_
     result = prepared_environment.execute(["/bin/sh", "-c", "pwd && ls"], working_copy)
 
     assert_the_command_saw_the_working_copy(result, working_copy)
+
+
+def test_executing_runs_the_command_as_the_invoking_user(
+    prepared_environment: DockerExecutionEnvironment, tmp_path: Path
+) -> None:
+    working_copy = a_working_copy_with(tmp_path, "marker.txt")
+
+    result = prepared_environment.execute(["id", "-u"], working_copy)
+
+    assert result.stdout.decode().strip() == str(os.getuid())
 
 
 def test_executing_a_failing_command_reports_its_nonzero_exit_and_stderr(
