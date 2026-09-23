@@ -94,6 +94,33 @@ def test_executing_a_failing_command_reports_its_nonzero_exit_and_stderr(
     assert "boom" in result.stderr.decode()
 
 
+def test_executing_forwards_the_exported_provider_key_into_the_container(
+    prepared_environment: DockerExecutionEnvironment, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "aqueduct-key-from-the-host-shell"
+    monkeypatch.setenv("TU_WIEN_AQUEDUCT_API_KEY", secret)
+    working_copy = a_working_copy_with(tmp_path, "marker.txt")
+
+    result = prepared_environment.execute(
+        ["/bin/sh", "-c", 'printf %s "$TU_WIEN_AQUEDUCT_API_KEY"'], working_copy
+    )
+
+    assert result.stdout.decode().strip() == secret
+
+
+def test_executing_without_an_exported_provider_key_forwards_nothing(
+    prepared_environment: DockerExecutionEnvironment, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("TU_WIEN_AQUEDUCT_API_KEY", raising=False)
+    working_copy = a_working_copy_with(tmp_path, "marker.txt")
+
+    result = prepared_environment.execute(
+        ["/bin/sh", "-c", "echo key=${TU_WIEN_AQUEDUCT_API_KEY:-absent}"], working_copy
+    )
+
+    assert "key=absent" in result.stdout.decode()
+
+
 def test_executing_when_docker_is_missing_raises_environment_unavailable(
     alpine_dockerfile: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -117,3 +144,37 @@ def test_preparing_with_a_dockerfile_that_cannot_build_raises_environment_unavai
 
     with pytest.raises(EnvironmentUnavailable):
         environment.prepare()
+
+
+@pytest.fixture(scope="module")
+def base_image(tmp_path_factory: pytest.TempPathFactory) -> DockerExecutionEnvironment:
+    dockerfile = Path(__file__).parents[2] / "image" / "Dockerfile"
+    environment = DockerExecutionEnvironment(dockerfile)
+    environment.prepare()
+    return environment
+
+
+BASE_IMAGE_LIUBAI_VERSION = "0.87.1"
+
+
+def test_the_base_image_provides_liubai_reporting_the_pinned_engine_version(
+    base_image: DockerExecutionEnvironment, tmp_path: Path
+) -> None:
+    working_copy = tmp_path / "working-copy"
+    working_copy.mkdir()
+
+    result = base_image.execute(["liubai", "--version"], working_copy)
+
+    assert result.stdout.decode().strip() == BASE_IMAGE_LIUBAI_VERSION
+
+
+def test_the_base_image_carries_the_aqueduct_model_catalog(
+    base_image: DockerExecutionEnvironment, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TU_WIEN_AQUEDUCT_API_KEY", "catalog-probe-key")
+    working_copy = tmp_path / "working-copy"
+    working_copy.mkdir()
+
+    result = base_image.execute(["liubai", "--list-models"], working_copy)
+
+    assert "deepseek-v4-flash-284b" in result.stdout.decode()

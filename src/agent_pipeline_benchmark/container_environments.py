@@ -1,12 +1,20 @@
 import hashlib
+import os
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from agent_pipeline_benchmark.environments import EnvironmentUnavailable, ExecutionEnvironment
 
 
 _BUILT_IMAGES: dict[str, str] = {}
+
+PROVIDER_ENV_VARS = ("TU_WIEN_AQUEDUCT_API_KEY",)
+
+
+def provider_env_arguments(env: dict[str, str] | None = None) -> list[str]:
+    names = PROVIDER_ENV_VARS if env is None else tuple(name for name in PROVIDER_ENV_VARS if name in env)
+    return [argument for name in names for argument in ("-e", name)]
 
 
 def image_tag_for(dockerfile: Path) -> str:
@@ -63,6 +71,7 @@ class DockerExecutionEnvironment(ExecutionEnvironment):
                     docker_executable(),
                     "run",
                     "--rm",
+                    *provider_env_arguments(),
                     "-v",
                     f"{working_copy}:{working_copy}",
                     "-w",
