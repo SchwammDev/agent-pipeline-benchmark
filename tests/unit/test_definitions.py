@@ -208,6 +208,82 @@ def test_a_wrong_type_for_repeats_is_reported_with_the_file_and_the_field(tmp_pa
     assert_error_message_names(error.value, "broken.toml", "repeats")
 
 
+def test_an_experiment_declaring_a_dockerfile_environment_resolves_the_dockerfile_relative_to_the_experiment_file(tmp_path: Path) -> None:
+    image = tmp_path / "image"
+    image.mkdir()
+    (image / "Dockerfile").write_text("FROM alpine\n")
+    pipeline_file = a_pipeline_file(tmp_path, "bare", stages=[("implement", "reference-solution")])
+    experiment_file = an_experiment_file(
+        tmp_path,
+        "skeleton",
+        corpus=tmp_path / "corpus",
+        pipelines=[pipeline_file],
+        tasks=["greeting"],
+        repeats=1,
+        environment="image/Dockerfile",
+    )
+
+    experiment = load_experiment(experiment_file)
+
+    assert experiment.environment is not None
+    assert experiment.environment.dockerfile == tmp_path / "image" / "Dockerfile"
+
+
+def test_an_experiment_without_an_environment_declares_none(tmp_path: Path) -> None:
+    pipeline_file = a_pipeline_file(tmp_path, "bare", stages=[("implement", "reference-solution")])
+    experiment_file = an_experiment_file(
+        tmp_path,
+        "skeleton",
+        corpus=tmp_path / "corpus",
+        pipelines=[pipeline_file],
+        tasks=["greeting"],
+        repeats=1,
+    )
+
+    experiment = load_experiment(experiment_file)
+
+    assert experiment.environment is None
+
+
+def test_an_environment_with_unknown_fields_is_rejected(tmp_path: Path) -> None:
+    experiment_file = tmp_path / "env-broken.toml"
+    experiment_file.write_text(
+        "\n".join(
+            [
+                'name = "skeleton"',
+                'corpus = { path = "corpus" }',
+                "pipelines = []",
+                'tasks = ["greeting"]',
+                "repeats = 1",
+                'environment = { dockerfile = "x", extra = "y" }',
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError) as error:
+        load_experiment(experiment_file)
+
+    assert_error_message_names(error.value, "env-broken.toml", "extra")
+
+
+def test_a_dockerfile_path_pointing_nowhere_is_reported_when_loading(tmp_path: Path) -> None:
+    pipeline_file = a_pipeline_file(tmp_path, "bare", stages=[("implement", "reference-solution")])
+    experiment_file = an_experiment_file(
+        tmp_path,
+        "skeleton",
+        corpus=tmp_path / "corpus",
+        pipelines=[pipeline_file],
+        tasks=["greeting"],
+        repeats=1,
+        environment="image/Dockerfile",
+    )
+
+    with pytest.raises(FileNotFoundError) as error:
+        load_experiment(experiment_file)
+
+    assert "image/Dockerfile" in str(error.value)
+
+
 def assert_error_message_names(error: ValueError, *fragments: str) -> None:
     message = str(error)
     for fragment in fragments:

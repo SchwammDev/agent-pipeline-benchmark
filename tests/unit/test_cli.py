@@ -45,6 +45,35 @@ def test_running_an_experiment_prints_an_existing_record_path_per_finished_run(
     assert_each_finished_run_path_was_printed(capsys.readouterr().out, expected_count=1)
 
 
+@pytest.mark.docker
+def test_running_an_experiment_that_declares_a_dockerfile_environment_runs_its_stages_inside_a_container_built_from_it(
+    tmp_path: Path, toy_corpus: Path
+) -> None:
+    dockerfile_directory = tmp_path / "image"
+    dockerfile_directory.mkdir()
+    dockerfile = dockerfile_directory / "Dockerfile"
+    dockerfile.write_text("FROM alpine\n")
+    pipeline_file = a_pipeline_file(tmp_path, "bare", stages=[("implement", "do-nothing")])
+    experiment_file = an_experiment_file(
+        tmp_path,
+        "skeleton",
+        corpus=toy_corpus,
+        pipelines=[pipeline_file],
+        tasks=["greeting"],
+        repeats=1,
+        environment="image/Dockerfile",
+    )
+    results = tmp_path / "results"
+
+    main(["run", str(experiment_file), "--results", str(results)])
+
+    records = list(results.glob("skeleton/bare/greeting/*/record.json"))
+    assert len(records) == 1
+    from agent_pipeline_benchmark import container_environments
+
+    assert container_environments.image_tag_for(dockerfile) in container_environments._BUILT_IMAGES
+
+
 def assert_each_finished_run_path_was_printed(output: str, expected_count: int) -> None:
     lines = [line.strip() for line in output.splitlines()]
     assert len(lines) == expected_count

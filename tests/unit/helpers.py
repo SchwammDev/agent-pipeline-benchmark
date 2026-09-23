@@ -67,19 +67,19 @@ def an_experiment_file(
     pipelines: list[Path | str],
     tasks: list[str],
     repeats: int,
+    environment: str | None = None,
 ) -> Path:
     experiment_file = directory / f"{name}.toml"
     pipeline_entries = ", ".join(f'"{pipeline}"' for pipeline in pipelines)
     task_entries = ", ".join(f'"{task}"' for task in tasks)
-    experiment_file.write_text(
-        "\n".join(
-            [
-                f'name = "{name}"',
-                f'corpus = {{ path = "{corpus}" }}',
-                f"pipelines = [{pipeline_entries}]",
-                f"tasks = [{task_entries}]",
-                f"repeats = {repeats}",
-            ]
-        )
-    )
+    lines = [
+        f'name = "{name}"',
+        f'corpus = {{ path = "{corpus}" }}',
+        f"pipelines = [{pipeline_entries}]",
+        f"tasks = [{task_entries}]",
+        f"repeats = {repeats}",
+    ]
+    if environment is not None:
+        lines.append(f'environment = {{ dockerfile = "{environment}" }}')
+    experiment_file.write_text("\n".join(lines))
     return experiment_file

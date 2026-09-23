@@ -36,6 +36,12 @@ class PipelineDefinition(BaseModel):
     stages: tuple[StageDefinition, ...]
 
 
+class ContainerEnvironmentDefinition(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    dockerfile: Path
+
+
 class ExperimentFile(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -44,6 +50,7 @@ class ExperimentFile(BaseModel):
     pipelines: tuple[str, ...]
     tasks: tuple[str, ...]
     repeats: int
+    environment: ContainerEnvironmentDefinition | None = None
 
 
 class ExperimentDefinition(BaseModel):
@@ -54,6 +61,7 @@ class ExperimentDefinition(BaseModel):
     pipelines: tuple[PipelineDefinition, ...]
     tasks: tuple[str, ...]
     repeats: int
+    environment: ContainerEnvironmentDefinition | None = None
 
 
 def load_pipeline(path: Path) -> PipelineDefinition:
@@ -68,12 +76,19 @@ def load_experiment(path: Path) -> ExperimentDefinition:
     directory = path.parent
     corpus_path = resolve(directory, Path(file.corpus.path))
     pipeline_paths = [resolve(directory, Path(pipeline)) for pipeline in file.pipelines]
+    environment = file.environment
+    if environment is not None:
+        dockerfile = resolve(directory, environment.dockerfile)
+        if not dockerfile.is_file():
+            raise FileNotFoundError(f"{path}: dockerfile {dockerfile} does not exist")
+        environment = ContainerEnvironmentDefinition(dockerfile=dockerfile)
     return ExperimentDefinition(
         name=file.name,
         corpus=corpus_path,
         pipelines=tuple(load_pipeline(pipeline_path) for pipeline_path in pipeline_paths),
         tasks=file.tasks,
         repeats=file.repeats,
+        environment=environment,
     )
 
 

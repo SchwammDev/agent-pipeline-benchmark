@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 
+from agent_pipeline_benchmark.container_environments import new_container_environment
 from agent_pipeline_benchmark.definitions import load_experiment
 from agent_pipeline_benchmark.runner import run_experiment
 
@@ -29,5 +30,8 @@ def run_command(arguments: argparse.Namespace) -> None:
         experiment = load_experiment(arguments.experiment)
     except (ValueError, FileNotFoundError) as error:
         raise SystemExit(error) from error
-    for record in run_experiment(experiment, arguments.results):
+    environment = None
+    if experiment.environment is not None:
+        environment = new_container_environment(experiment.environment.dockerfile)
+    for record in run_experiment(experiment, arguments.results, environment=environment):
         print(record)
