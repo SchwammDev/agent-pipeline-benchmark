@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import subprocess
 from abc import ABC, abstractmethod
@@ -5,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agent_pipeline_benchmark.corpus import WorkItem
+from agent_pipeline_benchmark.environments import ExecutionEnvironment
 from agent_pipeline_benchmark.subprocesses import environment_without_virtualenv
 
 
@@ -29,7 +32,10 @@ class ReferenceSolutionDoesNotApply(RuntimeError):
 
 
 class Harness(ABC):
-    def version(self) -> str | None:
+    def inside(self, environment: ExecutionEnvironment) -> Harness:
+        return self
+
+    def version(self, working_copy: Path | None = None) -> str | None:
         return None
 
     @abstractmethod
@@ -85,7 +91,17 @@ class LiubaiFailed(RuntimeError):
 
 
 class Liubai(Harness):
-    def version(self) -> str | None:
+    def __init__(self, environment: ExecutionEnvironment | None = None) -> None:
+        self.environment = environment
+
+    def inside(self, environment: ExecutionEnvironment) -> Harness:
+        return Liubai(environment=environment)
+
+    def version(self, working_copy: Path | None = None) -> str | None:
+        if self.environment is not None:
+            assert working_copy is not None, "the liubai version probe inside an environment needs the working copy"
+            result = self.environment.execute(["liubai", "--version"], working_copy=working_copy)
+            return result.stdout.decode().strip()
         result = subprocess.run(
             ["liubai", "--version"],
             capture_output=True,
@@ -101,16 +117,56 @@ class Liubai(Harness):
             raise LiubaiMisconfigured("the liubai harness requires a model on its stage")
         if not prompt:
             raise LiubaiMisconfigured("the liubai harness requires a prompt on its stage")
-        result = subprocess.run(
-            ["liubai", "--mode", "json", "--print", "--no-session", "--model", model, "--", prompt],
-            cwd=working_copy,
-            env=environment_without_virtualenv(),
-            capture_output=True,
-            check=False,
-        )
+        argv = ["liubai", "--mode", "json", "--print", "--no-session", "--model", model, "--", prompt]
+        if self.environment is not None:
+            result = self.environment.execute(argv, working_copy=working_copy)
+        else:
+            result = subprocess.run(
+                argv,
+                cwd=working_copy,
+                env=environment_without_virtualenv(),
+                capture_output=True,
+                check=False,
+            )
         events = the_events_in(result.stdout)
         if result.returncode != 0:
             raise LiubaiFailed(result.stderr.decode())
+        return StageOutcome(cost=the_cost_of(events), events=events)
+
+
+class ScriptedAgentFailed(RuntimeError):
+    def __init__(self, stderr: str) -> None:
+        super().__init__(f"scripted-agent exited with an error: {stderr}")
+
+
+class ScriptedAgent(Harness):
+    def __init__(self, environment: ExecutionEnvironment | None = None) -> None:
+        self.environment = environment
+
+    def inside(self, environment: ExecutionEnvironment) -> Harness:
+        return ScriptedAgent(environment=environment)
+
+    def version(self, working_copy: Path | None = None) -> str | None:
+        if self.environment is None:
+            return None
+        assert working_copy is not None, "the scripted-agent version probe needs the working copy"
+        result = self.environment.execute(["scripted-agent", "--version"], working_copy=working_copy)
+        return result.stdout.decode().strip()
+
+    def implement(
+        self, work_item: WorkItem, working_copy: Path, prompt: str = "", model: str | None = None
+    ) -> StageOutcome:
+        if self.environment is None:
+            raise RuntimeError("the scripted-agent harness requires an execution environment")
+        argv = ["scripted-agent", "--mode", "json", "--print", "--no-session"]
+        if model is not None:
+            argv.extend(["--model", model])
+        if prompt:
+            argv.extend(["--", prompt])
+        result = self.environment.execute(argv, working_copy=working_copy)
+        events = the_events_in(result.stdout)
+        if result.returncode != 0:
+            raise ScriptedAgentFailed(result.stderr.decode())
         return StageOutcome(cost=the_cost_of(events), events=events)
 
 
@@ -161,6 +217,7 @@ KNOWN_HARNESSES: dict[str, type[Harness]] = {
     "reference-solution-then-regression": ReferenceSolutionThenRegression,
     "do-nothing": DoNothing,
     "liubai": Liubai,
+    "scripted-agent": ScriptedAgent,
 }
 
 
