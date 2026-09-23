@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -148,13 +149,39 @@ def test_preparing_with_a_dockerfile_that_cannot_build_raises_environment_unavai
 
 @pytest.fixture(scope="module")
 def base_image(tmp_path_factory: pytest.TempPathFactory) -> DockerExecutionEnvironment:
+    config_directory = tmp_path_factory.mktemp("agent-config")
+    (config_directory / "models.json").write_text(the_aqueduct_models_json())
     dockerfile = Path(__file__).parents[2] / "image" / "Dockerfile"
-    environment = DockerExecutionEnvironment(dockerfile)
+    environment = DockerExecutionEnvironment(dockerfile, config_directory=config_directory)
     environment.prepare()
     return environment
 
 
 BASE_IMAGE_LIUBAI_VERSION = "0.87.1"
+
+
+def the_aqueduct_models_json() -> str:
+    provider = {
+        "providers": {
+            "aqueduct": {
+                "name": "aqueduct",
+                "baseUrl": "https://aqueduct.invalid",
+                "apiKey": "$TU_WIEN_AQUEDUCT_API_KEY",
+                "api": "openai-responses",
+                "models": [
+                    {
+                        "id": "deepseek-v4-flash-284b",
+                        "name": "DeepSeek V4 Flash",
+                        "input": ["text"],
+                        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                        "contextWindow": 393216,
+                        "maxTokens": 8192,
+                    }
+                ],
+            }
+        }
+    }
+    return json.dumps(provider)
 
 
 def test_the_base_image_provides_liubai_reporting_the_pinned_engine_version(

@@ -11,6 +11,23 @@ _BUILT_IMAGES: dict[str, str] = {}
 
 PROVIDER_ENV_VARS = ("TU_WIEN_AQUEDUCT_API_KEY",)
 
+AGENT_CONFIG_FILES = ("models.json", "settings.json")
+CONTAINER_AGENT_DIR = "/root/.pi/agent"
+
+
+def agent_config_dir() -> Path:
+    return Path.home() / ".apb"
+
+
+def config_mount_arguments(config_directory: Path | None = None) -> list[str]:
+    directory = agent_config_dir() if config_directory is None else config_directory
+    arguments: list[str] = []
+    for name in AGENT_CONFIG_FILES:
+        source = directory / name
+        if source.is_file():
+            arguments += ["-v", f"{source}:{CONTAINER_AGENT_DIR}/{name}:ro"]
+    return arguments
+
 
 def provider_env_arguments(env: dict[str, str] | None = None) -> list[str]:
     names = PROVIDER_ENV_VARS if env is None else tuple(name for name in PROVIDER_ENV_VARS if name in env)
@@ -58,8 +75,9 @@ def resolve_image_for(dockerfile: Path) -> str:
 
 
 class DockerExecutionEnvironment(ExecutionEnvironment):
-    def __init__(self, dockerfile: Path) -> None:
+    def __init__(self, dockerfile: Path, config_directory: Path | None = None) -> None:
         self.dockerfile = dockerfile
+        self.config_directory = config_directory if config_directory is not None else agent_config_dir()
 
     def prepare(self) -> None:
         self.image = resolve_image_for(self.dockerfile)
@@ -72,6 +90,7 @@ class DockerExecutionEnvironment(ExecutionEnvironment):
                     "run",
                     "--rm",
                     *provider_env_arguments(),
+                    *config_mount_arguments(self.config_directory),
                     "-v",
                     f"{working_copy}:{working_copy}",
                     "-w",

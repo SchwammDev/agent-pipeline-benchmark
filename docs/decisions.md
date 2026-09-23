@@ -9,6 +9,7 @@ Current decisions with their reason. Changed decisions replace the line, history
 | Harnesses invoked directly as subprocesses | No framework around the harness |
 | Claude Code and liubai only, Python only, first | Get it working before widening |
 | Containers only, no bubblewrap | One path gives both pinned toolchain and isolation |
+| Keys and agent config are run-time inputs: env vars via `-e`, config files mounted read-only from `~/.apb` | Nothing user-specific lives in the public repo or the content-addressed image; a fresh image plus shell setup reproduces a run |
 | Corpus is a separate git repo, pointed at by URL and commit | Private, so tasks stay out of training data; swappable; benchmark owns the protocol |
 | Corpus holds only repository, tickets, hidden tests, reference solutions | Harness, prompts, hooks, containers are benchmark concerns |
 | Tickets pin the public interface; hidden tests touch only that boundary | Tests need a contract; internals must stay free for the quality comparison |

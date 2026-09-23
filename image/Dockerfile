@@ -15,5 +15,3 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && PATH="${HOME}/.local/bin:${PATH}" bash /opt/liubai-mind/setup.sh
 
 ENV PATH="/root/.local/bin:${PATH}"
-
-COPY models.json /root/.pi/agent/models.json
