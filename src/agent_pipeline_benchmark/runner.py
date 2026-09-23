@@ -16,6 +16,7 @@ from agent_pipeline_benchmark.development_environments import (
     DevelopmentEnvironment,
     new_uv_development_environment,
 )
+from agent_pipeline_benchmark.environments import ExecutionEnvironment
 from agent_pipeline_benchmark.harnesses import (
     Harness,
     StageOutcome,
@@ -29,6 +30,14 @@ from agent_pipeline_benchmark.snapshots import commit_snapshot, initialise_snaps
 HarnessResolver = Callable[[str], Harness]
 Scorer = Callable[[WorkItem, DevelopmentEnvironment], list[TestVerdict]]
 EnvironmentFactory = Callable[[Path], DevelopmentEnvironment]
+
+_prepared_environments: dict[int, ExecutionEnvironment] = {}
+
+
+def ensure_prepared(environment: ExecutionEnvironment) -> None:
+    if id(environment) not in _prepared_environments:
+        environment.prepare()
+        _prepared_environments[id(environment)] = environment
 
 
 @dataclass(frozen=True)
@@ -129,6 +138,7 @@ def run_experiment(
     harness_named: HarnessResolver = harness_named,
     score: Scorer = score_hidden_tests,
     new_environment: EnvironmentFactory = new_uv_development_environment,
+    environment: ExecutionEnvironment | None = None,
 ) -> list[Path]:
     written_records = []
     for pipeline in experiment.pipelines:
@@ -145,6 +155,7 @@ def run_experiment(
                     score=score,
                     new_environment=new_environment,
                     results=results,
+                    environment=environment,
                 )
                 written_records.append(write_record(record, results))
     return written_records
@@ -171,6 +182,7 @@ def run_pipeline_on_task(
     score: Scorer = score_hidden_tests,
     new_environment: EnvironmentFactory = new_uv_development_environment,
     results: Path | None = None,
+    environment: ExecutionEnvironment | None = None,
 ) -> RunRecord:
     start = datetime.now(timezone.utc)
     run_id = new_run_id()
@@ -182,20 +194,27 @@ def run_pipeline_on_task(
             dirs_exist_ok=True,
             ignore=shutil.ignore_patterns(".venv", "__pycache__"),
         )
-        environment = new_environment(working_copy)
-        environment.prepare()
+        if environment is not None:
+            ensure_prepared(environment)
+        development_environment = new_environment(working_copy)
+        development_environment.prepare()
         initialise_snapshot(working_copy)
         run_directory = the_run_directory(results, experiment, pipeline.name, task.name, run_id)
         work_items = tuple(
-            run_work_item(pipeline, work_item, working_copy, environment, harness_named, score, run_directory)
+            run_work_item(
+                pipeline,
+                work_item,
+                working_copy,
+                development_environment,
+                harness_named,
+                score,
+                run_directory,
+                execution_environment=environment,
+            )
             for work_item in task.work_items
         )
         harnesses = tuple(dict.fromkeys(stage.harness for stage in pipeline.stages))
-        harness_versions = {
-            name: version
-            for name in harnesses
-            if (version := harness_named(name).version()) is not None
-        }
+        harness_versions = probe_harness_versions(harnesses, working_copy, harness_named, environment)
     return RunRecord(
         experiment=experiment,
         pipeline=pipeline.name,
@@ -212,6 +231,25 @@ def run_pipeline_on_task(
     )
 
 
+def probe_harness_versions(
+    harnesses: tuple[str, ...],
+    working_copy: Path,
+    harness_named: HarnessResolver,
+    environment: ExecutionEnvironment | None,
+) -> dict[str, str]:
+    versions: dict[str, str] = {}
+    for name in harnesses:
+        harness = harness_named(name)
+        if environment is not None:
+            harness = harness.inside(environment)
+            version = harness.version(working_copy)
+        else:
+            version = harness.version()
+        if version is not None:
+            versions[name] = version
+    return versions
+
+
 def the_run_directory(results: Path | None, experiment: str, pipeline: str, task: str, run_id: str) -> Path | None:
     if results is None:
         return None
@@ -222,17 +260,27 @@ def run_work_item(
     pipeline: PipelineDefinition,
     work_item: WorkItem,
     working_copy: Path,
-    environment: DevelopmentEnvironment,
+    development_environment: DevelopmentEnvironment,
     harness_named: HarnessResolver,
     score: Scorer,
     run_directory: Path | None,
+    execution_environment: ExecutionEnvironment | None = None,
 ) -> WorkItemRecord:
-    before = frozenset(verdict.name for verdict in score(work_item, environment) if verdict.passed)
+    before = frozenset(
+        verdict.name for verdict in score(work_item, development_environment) if verdict.passed
+    )
     stages = tuple(
-        run_stage(stage, work_item, working_copy, harness_named, the_stage_directory(run_directory, work_item, stage, number))
+        run_stage(
+            stage,
+            work_item,
+            working_copy,
+            harness_named,
+            the_stage_directory(run_directory, work_item, stage, number),
+            execution_environment=execution_environment,
+        )
         for number, stage in enumerate(pipeline.stages, start=1)
     )
-    after_verdicts = score(work_item, environment)
+    after_verdicts = score(work_item, development_environment)
     after = frozenset(verdict.name for verdict in after_verdicts if verdict.passed)
     movements = test_movements(before, after)
     scoring_directory = the_scoring_directory(run_directory, work_item)
@@ -274,10 +322,14 @@ def run_stage(
     working_copy: Path,
     harness_named: HarnessResolver,
     stage_directory: Path | None,
+    execution_environment: ExecutionEnvironment | None = None,
 ) -> StageRecord:
     prompt = render_prompt(stage.prompt, work_item) if stage.prompt is not None else ""
     started = time.monotonic()
-    outcome = harness_named(stage.harness).implement(work_item, working_copy, prompt, model=stage.model)
+    harness = harness_named(stage.harness)
+    if execution_environment is not None:
+        harness = harness.inside(execution_environment)
+    outcome = harness.implement(work_item, working_copy, prompt, model=stage.model)
     duration_seconds = time.monotonic() - started
     measures = the_measures_of(outcome.events) if outcome.events else {}
     record = StageRecord(

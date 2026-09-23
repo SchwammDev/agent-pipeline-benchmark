@@ -52,7 +52,6 @@ def test_a_run_executes_its_stages_inside_the_container_built_from_the_experimen
     assert_the_run_ran_inside_the_container(results, liubai_version=FAKE_AGENT_VERSION)
 
 
-@pytest.mark.xfail(strict=True, reason="issue #10: runs execute inside a prepared execution environment")
 def test_a_run_prepares_the_execution_environment_for_its_stages(
     toy_corpus: Path,
     results: Path,
@@ -65,7 +64,6 @@ def test_a_run_prepares_the_execution_environment_for_its_stages(
     assert_the_run_ran_inside_the_prepared_environment(results, environment=environment)
 
 
-@pytest.mark.xfail(strict=True, reason="issue #10: runs execute inside a prepared execution environment")
 def test_a_later_run_reuses_the_prepared_execution_environment(
     toy_corpus: Path,
     results: Path,
@@ -80,7 +78,6 @@ def test_a_later_run_reuses_the_prepared_execution_environment(
     assert_the_run_ran_inside_the_prepared_environment(results, environment=environment)
 
 
-@pytest.mark.xfail(strict=True, reason="issue #10: an unpreparable environment must refuse the run")
 def test_a_run_refuses_to_start_when_its_execution_environment_cannot_be_prepared(
     toy_corpus: Path,
     results: Path,

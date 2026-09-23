@@ -1,13 +1,17 @@
 import json
 import subprocess
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+
+import pytest
 
 from helpers import new_empty_suite_environment, snapshot_of
 
 from agent_pipeline_benchmark.corpus import WorkItem, load_task
 from agent_pipeline_benchmark.definitions import ExperimentDefinition, PipelineDefinition, StageDefinition
 from agent_pipeline_benchmark.development_environments import DevelopmentEnvironment
+from agent_pipeline_benchmark.environments import EnvironmentUnavailable, ExecutionEnvironment
 from agent_pipeline_benchmark.harnesses import Harness, StageCost, StageOutcome, ZERO_COST
 from agent_pipeline_benchmark.hidden_tests import TestVerdict
 from agent_pipeline_benchmark.runner import HarnessResolver, RunRecord, Scorer, run_experiment, run_pipeline_on_task
@@ -54,7 +58,7 @@ class RecordingHarness(Harness):
 
 
 class VersionedHarness(RecordingHarness):
-    def version(self) -> str:
+    def version(self, working_copy: Path | None = None) -> str | None:
         return "1.2.3"
 
 
@@ -63,6 +67,35 @@ def resolver_of(harnesses: dict[str, Harness]) -> HarnessResolver:
         return harnesses[name]
 
     return resolve
+
+
+class ScriptedExecutionEnvironment(ExecutionEnvironment):
+    def __init__(self, *, preparation_error: str | None = None) -> None:
+        self.preparation_error = preparation_error
+        self.preparations = 0
+        self.executed_commands: list[tuple[list[str], Path]] = []
+        self.action_log: list[str] = []
+
+    def prepare(self) -> None:
+        self.preparations += 1
+        if self.preparation_error is not None:
+            raise EnvironmentUnavailable(self.preparation_error)
+        self.action_log.append("prepare")
+
+    def execute(self, command: Sequence[str], working_copy: Path) -> subprocess.CompletedProcess:
+        self.executed_commands.append((list(command), working_copy))
+        self.action_log.append("execute")
+        if "--version" in command:
+            output = "9.9.9"
+        else:
+            output = "\n".join(
+                [
+                    '{"type":"turn_start"}',
+                    '{"type":"tool_execution_start","toolCallId":"t1","toolName":"bash","args":{"command":["ls"]}}',
+                    '{"type":"agent_end","messages":[]}',
+                ]
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=output.encode(), stderr=b"")
 
 
 def assert_single_record_written_under(
@@ -438,3 +471,157 @@ def the_recorded_stage_diff(results: Path, *, task: str) -> Path:
     stage_directories = list(results.glob(f"skeleton/bare/{task}/*/work-items/01-greet/stages/01-implement"))
     assert len(stage_directories) == 1, f"expected exactly one recorded stage, found {len(stage_directories)}"
     return stage_directories[0] / "diff.patch"
+
+
+def test_a_run_with_an_execution_environment_prepares_it_exactly_once_before_any_stage_runs(
+    tmp_path: Path, toy_corpus: Path
+) -> None:
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="scripted-agent"),))
+    experiment = ExperimentDefinition(
+        name="skeleton", corpus=toy_corpus, pipelines=(pipeline,), tasks=("greeting",), repeats=1
+    )
+    execution = ScriptedExecutionEnvironment()
+
+    run_experiment(experiment, tmp_path / "results", new_environment=new_empty_suite_environment, environment=execution)
+
+    assert execution.action_log.count("prepare") == 1
+    assert execution.action_log[0] == "prepare"
+
+
+def test_every_stage_of_a_run_with_an_execution_environment_executes_through_it(
+    tmp_path: Path, toy_corpus: Path
+) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(
+        name="bare",
+        stages=(
+            StageDefinition(name="first", harness="scripted-agent", model="model-a"),
+            StageDefinition(name="second", harness="scripted-agent", model="model-b"),
+        ),
+    )
+    experiment = ExperimentDefinition(
+        name="skeleton", corpus=toy_corpus, pipelines=(pipeline,), tasks=("greeting",), repeats=1
+    )
+    execution = ScriptedExecutionEnvironment()
+
+    run_experiment(experiment, tmp_path / "results", new_environment=new_empty_suite_environment, environment=execution)
+
+    assert_every_stage_ran_through_the_execution_environment(
+        execution,
+        repository=task.repository,
+        stage_argv=[
+            ["scripted-agent", "--mode", "json", "--print", "--no-session", "--model", "model-a"],
+            ["scripted-agent", "--mode", "json", "--print", "--no-session", "--model", "model-b"],
+        ],
+    )
+
+
+def assert_every_stage_ran_through_the_execution_environment(
+    execution: ScriptedExecutionEnvironment, *, repository: Path, stage_argv: list[list[str]]
+) -> None:
+    stage_commands = [command for command, _ in execution.executed_commands if "--version" not in command]
+    assert stage_commands == stage_argv
+    [working_copy] = {working_copy for _, working_copy in execution.executed_commands}
+    assert working_copy != repository
+
+
+def test_the_identity_names_the_versions_probed_inside_the_execution_environment(
+    toy_corpus: Path,
+) -> None:
+    task = load_task(toy_corpus, "greeting")
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="scripted-agent"),))
+    execution = ScriptedExecutionEnvironment()
+
+    record = run_pipeline_on_task(
+        "skeleton",
+        pipeline,
+        task,
+        1,
+        corpus=toy_corpus,
+        new_environment=new_empty_suite_environment,
+        environment=execution,
+    )
+
+    assert record.as_json()["identity"]["harness_versions"] == {"scripted-agent": "9.9.9"}
+    assert ["scripted-agent", "--version"] in [command for command, _ in execution.executed_commands]
+
+
+def test_a_run_refuses_to_start_and_records_nothing_when_the_execution_environment_cannot_be_prepared(
+    tmp_path: Path, toy_corpus: Path
+) -> None:
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="scripted-agent"),))
+    experiment = ExperimentDefinition(
+        name="skeleton", corpus=toy_corpus, pipelines=(pipeline,), tasks=("greeting",), repeats=1
+    )
+    results = tmp_path / "results"
+    execution = ScriptedExecutionEnvironment(preparation_error="the runtime cannot be reached")
+
+    with pytest.raises(EnvironmentUnavailable):
+        run_experiment(experiment, results, new_environment=new_empty_suite_environment, environment=execution)
+
+    assert not results.exists()
+    assert not execution.executed_commands
+
+
+def test_one_run_experiment_over_multiple_tasks_and_repeats_prepares_the_environment_exactly_once(
+    tmp_path: Path, toy_corpus: Path
+) -> None:
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="scripted-agent"),))
+    experiment = ExperimentDefinition(
+        name="skeleton", corpus=toy_corpus, pipelines=(pipeline,), tasks=("greeting",), repeats=2
+    )
+    execution = ScriptedExecutionEnvironment()
+
+    run_experiment(experiment, tmp_path / "results", new_environment=new_empty_suite_environment, environment=execution)
+
+    assert execution.preparations == 1
+
+
+def test_a_second_run_reusing_the_same_execution_environment_does_not_prepare_it_again(
+    tmp_path: Path, toy_corpus: Path
+) -> None:
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="scripted-agent"),))
+    experiment = ExperimentDefinition(
+        name="skeleton", corpus=toy_corpus, pipelines=(pipeline,), tasks=("greeting",), repeats=1
+    )
+    execution = ScriptedExecutionEnvironment()
+
+    run_experiment(experiment, tmp_path / "results", new_environment=new_empty_suite_environment, environment=execution)
+    run_experiment(experiment, tmp_path / "results", new_environment=new_empty_suite_environment, environment=execution)
+
+    assert execution.preparations == 1
+    stage_commands = [command for command, _ in execution.executed_commands if "--version" not in command]
+    assert len(stage_commands) == 2
+
+
+def test_separate_runs_with_distinct_execution_environments_prepare_each_once(
+    tmp_path: Path, toy_corpus: Path
+) -> None:
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="scripted-agent"),))
+    experiment = ExperimentDefinition(
+        name="skeleton", corpus=toy_corpus, pipelines=(pipeline,), tasks=("greeting",), repeats=1
+    )
+    first = ScriptedExecutionEnvironment()
+    second = ScriptedExecutionEnvironment()
+
+    run_experiment(experiment, tmp_path / "results", new_environment=new_empty_suite_environment, environment=first)
+    run_experiment(experiment, tmp_path / "results", new_environment=new_empty_suite_environment, environment=second)
+
+    assert [first.preparations, second.preparations] == [1, 1]
+
+
+def test_a_failed_prepare_is_retried_by_the_next_run(tmp_path: Path, toy_corpus: Path) -> None:
+    pipeline = PipelineDefinition(name="bare", stages=(StageDefinition(name="implement", harness="scripted-agent"),))
+    experiment = ExperimentDefinition(
+        name="skeleton", corpus=toy_corpus, pipelines=(pipeline,), tasks=("greeting",), repeats=1
+    )
+    results = tmp_path / "results"
+    execution = ScriptedExecutionEnvironment(preparation_error="the runtime cannot be reached")
+
+    with pytest.raises(EnvironmentUnavailable):
+        run_experiment(experiment, results, new_environment=new_empty_suite_environment, environment=execution)
+    execution.preparation_error = None
+
+    run_experiment(experiment, results, new_environment=new_empty_suite_environment, environment=execution)
+
+    assert execution.preparations == 2

@@ -580,7 +580,7 @@ def an_execution_environment_that_cannot_be_prepared() -> ScriptedExecutionEnvir
 def run_experiment_with(experiment: Experiment, results: Path, *, environment: ExecutionEnvironment) -> None:
     from agent_pipeline_benchmark.runner import run_experiment as the_run
 
-    the_run(experiment_definition_of(experiment), results, environment=environment)  # ty: ignore[unknown-argument]
+    the_run(experiment_definition_of(experiment), results, environment=environment)
 
 
 def experiment_definition_of(experiment: Experiment) -> ExperimentDefinition:
